@@ -5,7 +5,6 @@
 **/dist/
 **/in/
 **/out/
-/Examples
 /Distrib
 config.json
 build.bat
