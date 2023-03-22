@@ -17,7 +17,6 @@ from PIL import Image, ImageFilter
 from scipy import ndimage
 from scipy.io.wavfile import write as wav_write
 from scipy.signal import istft
-from scipy.signal.windows import cosine
 
 from Common.force_input import force_input
 from Common.JSONConfig import JSONConfig
@@ -27,8 +26,7 @@ from TermUtils.term import *
 
 CFG_NAME = "config.json"
 APP = os.path.dirname(sys.argv[0])
-MAX_IMAGE_LIN_SIZE = 1e9
-WINDOW_MODE = cosine
+MAX_IMAGE_LIN_SIZE = 1e8
 info_format = Format(fg=FG.BLUE)
 error_format = Format(fg=FG.YEL, bg=BG.RED, style=STYLE.BOLD)
 ok_format = Format(fg=FG.GREEN, style=STYLE.ITALIC)
@@ -97,6 +95,21 @@ def clamped_log_remap(value: Union[int, float],
     return clamp(to_min * math.pow(to_max / to_min, scaled_value ** log_scale), to_min, to_max)
 
 
+def clamped_linear_remap(value: Union[int, float],
+                          from_min: Union[int, float], from_max: Union[int, float],
+                          to_min: Union[int, float], to_max: Union[int, float]):
+
+    if from_min >= from_max:
+        raise ValueError("Range size: 0 or negative")
+    if to_min >= to_max:
+        raise ValueError("Range size: 0 or negative")
+    if value < from_min or value > from_max:
+        raise ValueError("Value out of range")
+    
+    scale = (value - from_min) / (from_max - from_min)
+    return clamp(to_min + scale * (to_max - to_min), to_min, to_max)
+
+
 def main():
     modes = ("ISM", "PBP")
     directions = ("row", "column")
@@ -117,7 +130,7 @@ def main():
         },
         "ISM": {
             "use_scanlines": False,
-            "scanlines_distance": 16,
+            "scanlines_distance": 16
         }
     }
     config_standard = JSONConfig(config_standard)
@@ -278,7 +291,7 @@ def main():
                 continue
             
             if not rate_locked:
-                sample_rate = round(clamped_log_remap(image_lin_size,
+                sample_rate = round(clamped_linear_remap(image_lin_size,
                                                     1, MAX_IMAGE_LIN_SIZE,
                                                     sample_rate_range[0], sample_rate_range[-1]))
                 write(f"\tsample rate: {ffg(sample_rate, FG.YEL)}\n")
