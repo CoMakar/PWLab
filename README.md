@@ -47,7 +47,7 @@
 > Wavorizer.py :: 29: MAX_IMAGE_LIN_SIZE = 1e8
 
 ## Complete config structure:
-```json
+```
 "mode": ["PBP"/"ISM"],
 "channels": [1/2],
 "rate_locked": [True/False],
