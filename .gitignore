@@ -6,3 +6,5 @@
 distrib.zip
 **/in/
 **/out/
+/Examples
+config.json
