@@ -3,8 +3,9 @@
 *.spec
 **/build/
 **/dist/
-distrib.zip
 **/in/
 **/out/
 /Examples
+/Distrib
 config.json
+build.bat
