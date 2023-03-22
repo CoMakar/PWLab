@@ -1,0 +1,15 @@
+{
+    "mode": "PBP",
+    "channels": 2,
+    "rate_locked": true,
+    "sample_rate": 44100,
+    "image_scale": 1,
+    "PBP": {
+        "pixel_sum_method": false,
+        "direction": "row"
+    },
+    "ISM": {
+        "use_scanlines": false,
+        "scanlines_distance": 16
+    }
+}
