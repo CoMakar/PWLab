@@ -180,7 +180,7 @@ def main():
     except AssertionError as e:
         write(f"Config validation failed: {ffg(f'[!] {e}', FG.RED)} \n")
         
-        write("Fix it yourself or reset")
+        write("Fix it yourself or reset\n")
         write("Reset? [y/n] ")
         
         yn = force_input(ffg('>>> ', FG.GREEN), "[y/n]", 
@@ -249,7 +249,7 @@ def main():
         if ism_use_scanlines:
             write(f"   draw scanline every {ism_scanlines_distance} row")
         else:
-            write("   no active setting ;(")
+            write("   no active settings ;(")
     write()
                 
     write()
