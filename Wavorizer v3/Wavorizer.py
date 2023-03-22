@@ -14,7 +14,6 @@ from typing import Union
 
 import numpy as np
 from PIL import Image, ImageFilter
-from scipy import ndimage
 from scipy.io.wavfile import write as wav_write
 from scipy.signal import istft
 
