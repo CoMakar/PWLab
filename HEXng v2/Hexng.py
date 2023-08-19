@@ -31,9 +31,9 @@ def main():
     input_files = os.listdir('./in')
     
     if len(input_files) == 0:
-        set_format(error_format)
-        write("No input files!\n")
-        input("...")
+        writef(":: No input files! ::", error_format)
+        write()
+        input("Press Enter to exit...")
         Scr.reset_mode()
         sys.exit(1)
     
@@ -87,12 +87,12 @@ def main():
         
     set_format(ok_format)
     write("Done!\n")
-    input("...")
+    input("Press Enter to exit...")
                 
                       
 if __name__ == "__main__":
-    os.system("color")
+    os.system("color") #! NOT TESTED ON LINUX
     try:
         main()
     except KeyboardInterrupt:
-        input("...")
+        input("Press Enter to exit...")

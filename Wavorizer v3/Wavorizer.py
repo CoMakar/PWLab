@@ -198,9 +198,9 @@ def main():
     other_files = input_files - png_files
     
     if len(png_files) == 0:
-        set_format(error_format)
-        write("No input files!\n")
-        input("...")
+        writef(":: No input files! ::", error_format)
+        write()
+        input("Press Enter to exit...")
         Scr.reset_mode()
         sys.exit(1)
         
@@ -257,17 +257,18 @@ def main():
     with Timer(fstyle("Total", STYLE.BOLD)):
         for file in png_files:
             image: Image = None
+            
+            write(f"{fstyle(':: filename:', STYLE.BOLD)} {ffg(file, FG.MAGNT)}\n")
+            
             try:
                 with open(f"./in/{file}", 'rb') as file_img:
                     image = Image.open(io.BytesIO(file_img.read()))
             except Exception as e:
-                writef(f"File error: {e}\n", error_format)
-                writef(traceback.format_exc, error_format)
-                write("skip ->\n")
+                writef(f":: File error: {e} ::", error_format)
+                write()
+                write(f"{ffg('>> SKIP', FG.RED)}\n")
                 continue
-            
-            write(f"{fstyle(':: filename:', STYLE.BOLD)} {ffg(file, FG.MAGNT)}\n")
-            
+                 
             orig_size = image.size
                 
             if image_scale != 1:
@@ -324,14 +325,13 @@ def main():
                 
                 wav_write(f"./out/{file}_{mode}_{sample_rate}HZ.wav", sample_rate, data)
             
-    set_format(ok_format)
-    write("Done!\n")
-    input("...")
+    writef("Done!\n", ok_format)
+    input("Press Enter to exit...")
     
 if __name__ == '__main__':
-    os.system("color")
+    os.system("color") #! NOT TESTED ON LINUX
     try:
         main()
     except KeyboardInterrupt:
-        input("...")
+        input("Press Enter to exit...")
     Scr.reset_mode()
