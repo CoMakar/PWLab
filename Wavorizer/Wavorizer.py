@@ -18,7 +18,6 @@ from typing import Union
 
 import numpy as np
 from PIL import Image
-from scipy.ndimage import gaussian_filter
 from scipy.io.wavfile import write as wav_write
 from scipy.signal import istft
 
