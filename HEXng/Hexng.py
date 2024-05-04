@@ -42,6 +42,7 @@ def main():
                           ffg("Value should be larger than 100", FG.RED),
                           func=int,
                           predicates=[lambda x: x > 100])
+    write()
     
     writef("< FILES >", inverted_format)
     write()

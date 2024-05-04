@@ -8,3 +8,4 @@
 /Distrib
 config.json
 build.bat
+**/Pipfile.lock

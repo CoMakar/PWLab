@@ -9,7 +9,6 @@ import io
 import math
 import os
 import sys
-import traceback
 from typing import Union
 
 import numpy as np
