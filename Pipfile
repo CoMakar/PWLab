@@ -4,8 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pypng = "*"
+numpy = "*"
+scipy = "*"
+pillow = "*"
 tqdm = "*"
+pypng = "*"
+pyinstaller = "*"
 
 [dev-packages]
 
