@@ -5,6 +5,11 @@ Created on Tue Jun 23 21:07:56 2020
 """
 
 
+# +
+# + [!] needs refactoring. At the moment it's just a mishmash of code
+# + 
+
+
 import io
 import math
 import os
@@ -12,72 +17,77 @@ import sys
 from typing import Union
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image
+from scipy.ndimage import gaussian_filter
 from scipy.io.wavfile import write as wav_write
 from scipy.signal import istft
 
-from Common.force_input import force_input
-from Common.JSONConfig import JSONConfig
-from Common.Timer import Timer
-from TermUtils.term import *
+from src.Common.force_input import force_input
+from src.Common.JSONConfig import JSONConfig
+from src.Common.Timer import Timer
+from src.TermUtils import *
 
 
 CFG_NAME = "config.json"
 APP = os.path.dirname(sys.argv[0])
 MAX_IMAGE_LIN_SIZE = 1e8
-info_format = Format(fg=FG.BLUE)
-error_format = Format(fg=FG.YEL, bg=BG.RED, style=STYLE.BOLD)
-ok_format = Format(fg=FG.GREEN, style=STYLE.ITALIC)
-inverted_format = Format(style=STYLE.REVERSE)
+F_INFO = Format(fg=FG.BLUE)
+F_ERROR = Format(fg=FG.YEL, bg=BG.RED, style=STYLE.BOLD)
+F_OK = Format(fg=FG.GREEN, style=STYLE.ITALIC)
+F_INVERTED = Format(style=STYLE.REVERSE)
+
+Number = Union[int, float]
 
 
-def pbp (image: Image, linear_size: int,
-         direction: str, use_sum_rgb: bool):
+def pbp(image: Image, linear_size: int,
+        direction: str, use_sum_rgb: bool):
+    # +
+    # + PBP - pixel by pixel method of image decoding into sound data
+    # +
+    
     image = image.convert('RGB')
     image_data = np.array(image)
 
-    if direction == "column": 
-        # transpose image to replace rows with columns
-        # [r, g]    =>  [r, b]
-        # [b, b]    =>  [g, b]
+    if direction == "column":
+        # transpose an image to replace rows with columns
+        # [0, 1]    =>    [0, 2]
+        # [2, 3]    =>    [1, 3]
         image_data = image_data.transpose((1, 0, 2))
-    
+
     if use_sum_rgb:
         # sum rgb components into a single value
-        image_data = image_data.reshape(linear_size, 3) 
-        image_data =  np.sum(image_data, 1)
-    
+        image_data = image_data.reshape(linear_size, 3)
+        image_data = np.sum(image_data, 1)
+
+    # return as 1dim array of audio data
     return image_data.flatten()
-    
-    
-def ism (image: Image, use_scanlines: bool,
-         scanlines_distance: int):
-    
+
+
+def ism(image: Image,
+        use_noise: bool, noise_strength: float):
+    # +
+    # + ISM - inverse spectrogram method of image decoding into sound data
+    # +
+
     image = image.convert("L")
-    blurred_image = image.filter(ImageFilter.GaussianBlur(4))
-    edges = image.filter(ImageFilter.FIND_EDGES())
     image_data = np.array(image)[::-1] / 255
-    blurred_data = np.array(blurred_image)[::-1] / 255
-    edge_data = np.array(edges)[::-1] / 255
     
-    edge_data[::2].fill(0)
-    
-    if use_scanlines:
-        image_data[::scanlines_distance].fill(np.min(image_data))
-        
-    composed = image_data + (blurred_data * 8) + (edge_data / 16)
-    
-    return istft(composed, scaling="psd")[1]
+    if use_noise:
+        noise = np.abs(np.random.normal(
+            0, 1, image_data.shape)) * noise_strength
+        image_data *= 1 - noise
+
+    return istft(image_data, scaling="psd")[1]
 
 
-def clamp(value: Union[int, float],
-          min_value: Union[int, float] = 0, max_value: Union[int, float] = 1):
+def clamp(value: Number,
+          min_value: Number = 0, max_value: Number = 1):
     return max(min(value, max_value), min_value)
 
 
-def clamped_log_remap(value: Union[int, float],
-                      from_min: Union[int, float], from_max: Union[int, float],
-                      to_min: Union[int, float], to_max: Union[int, float]):
+def clamped_log_remap(value: Number,
+                      from_min: Number, from_max: Number,
+                      to_min: Number, to_max: Number):
     
     if from_min <= 0 or from_max <= 0 or to_min <= 0 or to_max <= 0:
         raise ValueError("Cannot remap from negative")
@@ -93,9 +103,9 @@ def clamped_log_remap(value: Union[int, float],
     return clamp(to_min * math.pow(to_max / to_min, scaled_value ** log_scale), to_min, to_max)
 
 
-def clamped_linear_remap(value: Union[int, float],
-                          from_min: Union[int, float], from_max: Union[int, float],
-                          to_min: Union[int, float], to_max: Union[int, float]):
+def clamped_linear_remap(value: Number,
+                          from_min: Number, from_max: Number,
+                          to_min: Number, to_max: Number):
 
     if from_min >= from_max:
         raise ValueError("Range size: 0 or negative")
@@ -112,100 +122,104 @@ def main():
     modes = ("ISM", "PBP")
     directions = ("row", "column")
     sample_rate_range = range(512, 256001)
-    scanlines_range = range(8, 65)
-    scale_min = 1
-    scale_max = 10
+    image_scale_range = range(1, 11)
     
-    config_standard = {
-        "mode": "PBP",
-        "channels": 1,
-        "rate_locked": True,
-        "sample_rate": 44100,
-        "image_scale": 1,
-        "PBP": {
-            "pixel_sum_method": False,
-            "direction": "row"
-        },
-        "ISM": {
-            "use_scanlines": False,
-            "scanlines_distance": 16
+    default_config = JSONConfig(
+        {
+            "mode": "PBP",
+            "channels": 1,
+            "sample_rate_locked": True,
+            "sample_rate": 44100,
+            "image_scale": 1,
+            "PBP": {
+                "sum_rgb_components": False,
+                "direction": "row"
+            },
+            "ISM": {
+                "use_noise": True,
+                "noise_strength": 0.5
+            }
         }
-    }
-    config_standard = JSONConfig(config_standard)
+    )
     
     os.chdir(APP)
     os.makedirs("in", exist_ok=True)
     os.makedirs("out", exist_ok=True)
-    
+
     try:
         config = JSONConfig.load(CFG_NAME)
-        if config.schema != config_standard.schema:
+        if config.schema != default_config.schema:
             raise KeyError
+
     except (FileNotFoundError, KeyError, JSONConfig.FileCorruptedError):
         write(f"config.json does not exist or corrupted, create new? [y/n] ")
-        yn = force_input(ffg('>>> ', FG.GREEN), "[y/n]", 
-                    func=str.lower,
-                    predicates=[lambda x: x in ('y', 'n')])
+        yn = force_input(ffg('>>> ', FG.GREEN), "[y/n]",
+                         func=str.lower,
+                         predicates=[lambda x: x in ('y', 'n')])
         if yn == 'y':
-            config_standard.save(CFG_NAME)
+            default_config.save(CFG_NAME)
         Scr.reset_mode()
         sys.exit(1)
-            
 
     mode = config.get("mode")
     channels = config.get("channels")
-    rate_locked = config.get("rate_locked")
+    sample_rate_locked = config.get("sample_rate_locked")
     sample_rate = config.get("sample_rate")
     image_scale = config.get("image_scale")
-    pbp_use_sum_method = config.section("PBP").get("pixel_sum_method")
+    pbp_sum_rgb_components = config.section("PBP").get("sum_rgb_components")
     pbp_direction = config.section("PBP").get("direction")
-    ism_use_scanlines = config.section("ISM").get("use_scanlines")
-    ism_scanlines_distance = config.section("ISM").get("scanlines_distance")
+    ism_use_noise = config.section("ISM").get("use_noise")
+    ism_noise_strength = config.section("ISM").get("noise_strength")
     
-    try: 
-        assert mode in modes,\
-            f"modes available: [PBP, ISM]; current: {mode}"
-        assert channels in (1, 2),\
-            f"channels available: [1 (MONO), 2 (STEREO)]; current: {channels}"
-        assert sample_rate in sample_rate_range,\
-            f"samplerate not in {sample_rate_range}; current: {sample_rate}"
-        assert image_scale >= scale_min and image_scale <= scale_max,\
-            f"image scale not in ({scale_min} <= scale <= {scale_max}); current: {image_scale}"
-        assert pbp_direction in directions,\
-            f"pbp direction available: [row, column]; current: {pbp_direction}"
-        assert ism_scanlines_distance == 0 or ism_scanlines_distance in scanlines_range,\
-            f"scanlines distance not in {scanlines_range}; current: {ism_scanlines_distance}"
-        
-    except AssertionError as e:
+    try:
+        if mode not in modes:
+            raise ValueError(
+                f"modes available: [PBP, ISM]; current: {mode}")
+        if channels not in (1, 2):
+            raise ValueError(
+                f"channels available: [1 - (Mono), 2 - (Stereo)]; current: {channels}")
+        if pbp_direction not in directions:
+            raise ValueError(
+                f"directions available: [row, column]; current: {pbp_direction}")
+
+        if sample_rate not in sample_rate_range:
+            raise ValueError(
+                f"sample rate must be in range({sample_rate_range[0]} ... {sample_rate_range[-1]}); current: {sample_rate}")
+        if image_scale not in image_scale_range:
+            raise ValueError(
+                f"image scale must be in range({image_scale_range[0]} ... {image_scale_range[-1]}); current: {image_scale}")
+        if not (0.0 <= ism_noise_strength <= 1.0):
+            raise ValueError(
+                f"noise strength must be a factor in range(0.0 ... 1.0); current: {ism_noise_strength}")
+
+    except ValueError as e:
         write(f"Config validation failed: {ffg(f'[!] {e}', FG.RED)} \n")
-        
         write("Fix it yourself or reset\n")
         write("Reset? [y/n] ")
-        
-        yn = force_input(ffg('>>> ', FG.GREEN), "[y/n]", 
-            func=str.lower,
-            predicates=[lambda x: x in ('y', 'n')])
+
+        yn = force_input(ffg('>>> ', FG.GREEN), "[y/n]",
+                         func=str.lower,
+                         predicates=[lambda x: x in ('y', 'n')])
         if yn == 'y':
-            config_standard.save(CFG_NAME)
+            default_config.save(CFG_NAME)
+
         Scr.reset_mode()
         sys.exit(1)
-        
-    
+
     input_files = set(os.listdir('./in'))
-    png_files = set(filter(lambda f: 
-        f.endswith(".png") or f.endswith(".jpg") or f.endswith(".jpeg"), input_files))
-    other_files = input_files - png_files
-    
-    if len(png_files) == 0:
-        writef(":: No input files! ::", error_format)
+    img_files = set(filter(lambda f:
+                           f.endswith(".png") or f.endswith(".jpg") or f.endswith(".jpeg"), input_files))
+    other_files = input_files - img_files
+
+    if len(img_files) == 0:
+        writef(":: No input files! ::", F_ERROR)
         write()
-        input("Press Enter to exit...")
         Scr.reset_mode()
         sys.exit(1)
         
-    writef("< FILES >", inverted_format)
+    writef("< FILES >", F_INVERTED)
     write()
-    [write(f"\t> {file}\n") for file in png_files]
+    [write(f"\t> {file}\n") for file in img_files]
     [write(ffg(f"\t- {file}\n", FG.RED)) for file in other_files]
     
     write()
@@ -215,7 +229,7 @@ def main():
     write()
 
     write("Dynamic sample rate: ")
-    if not rate_locked:
+    if not sample_rate_locked:
         write(ffg("+", FG.GREEN))
     else:
         write(ffg("-", FG.RED))
@@ -238,99 +252,118 @@ def main():
     
     if mode == "PBP":
         write("[+] PBP\n")
-        write(f"   direction: {ffg(pbp_direction, FG.YEL)}\n")
-        if pbp_use_sum_method:
-            write(f"   use {ffg('r', FG.RED)}+{ffg('g', FG.GREEN)}+{ffg('b', FG.BLUE)} value")
+        write(f"\tdirection: {ffg(pbp_direction, FG.YEL)}\n")
+        if pbp_sum_rgb_components:
+            write(f"\tuse sum of {ffg('r', FG.RED)}+{ffg('g', FG.GREEN)}+{ffg('b', FG.BLUE)} components")
         else:
-            write(f"   use {ffg('r', FG.RED)}{ffg('g', FG.GREEN)}{ffg('b', FG.BLUE)} components")
+            write(f"\tuse {ffg('r', FG.RED)}{ffg('g', FG.GREEN)}{ffg('b', FG.BLUE)} components separately")
     elif mode == "ISM":
         write("[+] ISM\n")
-        if ism_use_scanlines:
-            write(f"   draw scanline every {ism_scanlines_distance} row")
+        if ism_use_noise:
+            write(f"\tapply noise with strength: {ffg(ism_noise_strength, FG.YEL)}")
         else:
-            write("   no active settings ;(")
+            write("...")
     write()
                 
     write()
         
     with Timer(fstyle("Total", STYLE.BOLD)):
-        for file in png_files:
-            image: Image = None
-            
+        for file in img_files:
             write(f"{fstyle(':: filename:', STYLE.BOLD)} {ffg(file, FG.MAGNT)}\n")
-            
+
             try:
                 with open(f"./in/{file}", 'rb') as file_img:
                     image = Image.open(io.BytesIO(file_img.read()))
+
             except Exception as e:
-                writef(f":: File error: {e} ::", error_format)
+                writef(f":: File error: {e} ::", F_ERROR)
                 write()
                 write(f"{ffg('>> SKIP', FG.RED)}\n")
                 continue
                  
-            orig_size = image.size
                 
             if image_scale != 1:
-                image = image.resize((round(image.size[0]*image_scale),
-                                    round(image.size[1]*image_scale)), 
-                                    resample=Image.NEAREST)
-                writef(f"\timage resized [scale: {image_scale}]\n", info_format)
+                orig_size = image.size
+                image = image.resize((round(image.size[0] * image_scale),
+                                      round(image.size[1] * image_scale)),
+                                     resample=Image.NEAREST)
+                
+                write("\t+ image resized:\n")
+                write(f"\t├ scale: {ffg(image_scale, FG.BLUE)}\n")
+                write(f"\t{f'└ original size:':<30} {ffg(orig_size[0], FG.BLUE)}x{ffg(orig_size[1], FG.BLUE)}\n")
                 
             width, height = image.size
             image_lin_size = width * height
             
-            write(f"\timage size: {ffg(width, FG.BLUE)}x{ffg(height, FG.BLUE)}\n")
-            if image_scale != 1:
-                write(f"\toriginal size: {ffg(orig_size[0], FG.BLUE)}x{ffg(orig_size[1], FG.BLUE)}\n")
-            write(f"\tapproximate pixels amount: {ffg(image_lin_size, FG.CYAN)}\n")
-            
+            write(f"\t{f'size:':<30} {ffg(width, FG.BLUE)}x{ffg(height, FG.BLUE)}\n")
+            write(f"\t{f'pixels amount:':<30} {ffg(image_lin_size, FG.CYAN)}px\n")
+                        
             if image_lin_size > MAX_IMAGE_LIN_SIZE:
-                writef("\tImage is too large\n", error_format)
-                write("\tskip ->\n")
+                writef("\t:: Image is too large ::", F_ERROR)
+                write()
+                write(f"{ffg('>> SKIP', FG.RED)}\n")
                 continue
             
-            if not rate_locked:
+            if not sample_rate_locked:
                 sample_rate = round(clamped_linear_remap(image_lin_size,
                                                     1, MAX_IMAGE_LIN_SIZE,
                                                     sample_rate_range[0], sample_rate_range[-1]))
                 write(f"\tsample rate: {ffg(sample_rate, FG.YEL)}\n")
 
-            data = None
+            audio_data = None
             
             with Timer(fstyle(file, STYLE.BOLD)):
                 if mode == "PBP":
-                    data = pbp(image, image_lin_size, 
-                            pbp_direction, pbp_use_sum_method)
-                
-                elif mode == "ISM":            
+                    write(ffg("( Processing )\n", FGRGB(64, 64, 64)))
+                    
+                    audio_data = pbp(image, image_lin_size,
+                                     pbp_direction, pbp_sum_rgb_components)
+                    Cur.prev_line()
+                    Scr.clear_line()
+
+                elif mode == "ISM":
                     if width < 64 or height < 64:
-                        writef(f"\tsize is too small for ISM (64+x64+ px required)\n", error_format)
-                        write("\tskip ->\n")
+                        writef(
+                            f"\t:: ISM mode requires width\height to be {ffg('64px+', FG.RED)} ::", F_ERROR)
+                        write()
+                        write(f"{ffg('>> SKIP', FG.RED)}\n")
                         continue
-                    
+
                     if width != height:
-                        writef("\taspect ratio fixed\n", info_format)
                         width = round(width * (height / width))
-                        image = image.resize((width, height),resample=Image.LANCZOS)
+                        image = image.resize(
+                            (width, height), resample=Image.LANCZOS
+                        )
+                        write(f"\t* aspect ratio {ffg('fixed', FG.GREEN)}\n")
+
+                    write(ffg("( Processing )\n", FGRGB(64, 64, 64)))
+
+                    audio_data = ism(image, ism_use_noise, ism_noise_strength)
                     
-                    data = ism(image, ism_use_scanlines, ism_scanlines_distance)
-                
+                    Cur.prev_line()
+                    Scr.clear_line()
+
                 if channels == 2:
-                    if data.shape[0] % 2 == 1:
-                        data = np.append(data, 0)
-                    data = data.reshape((len(data)//2, 2))
+                    if audio_data.shape[0] % 2 == 1:
+                        audio_data = np.append(audio_data, 0)
+                    audio_data = audio_data.reshape((len(audio_data)//2, 2))
+
+                write(ffg("( Saving )\n", FGRGB(64, 64, 64)))
                 
-                write("Saving...\n")
+                wav_write(f"./out/{file}_{mode}_{sample_rate}HZ.wav", sample_rate, audio_data)
                 
-                wav_write(f"./out/{file}_{mode}_{sample_rate}HZ.wav", sample_rate, data)
+                Cur.prev_line()
+                Scr.clear_line()
+                
+            write()
             
-    writef("Done!\n", ok_format)
-    input("Press Enter to exit...")
+    writef("( Done! )\n", F_OK)
+
     
 if __name__ == '__main__':
-    os.system("color") #! NOT TESTED ON LINUX
+    Scr.color_on()
     try:
         main()
     except KeyboardInterrupt:
-        input("Press Enter to exit...")
+        pass
     Scr.reset_mode()

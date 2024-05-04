@@ -1,5 +1,6 @@
 import os
-from typing import Union, List, Iterable, Tuple
+import platform
+from typing import Union, List, Iterable, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 from sys import stdout
@@ -26,7 +27,7 @@ class FG(Enum):
 class FGRGB:
     def __init__(self, r: int, g: int, b: int):
         """
-        [FG] constructs color fomratting string rom RGB values
+        [FG] constructs color formatting string rom RGB values
         """
         if not(0 <= r < 256 or 0 <= g < 256 or 0 <= b < 256):
             raise ValueError("Invalid RGB values")
@@ -51,7 +52,7 @@ class BG(Enum):
 class BGRGB:
     def __init__(self, r: int, g: int, b: int):
         """
-        [BG] constructs color fomratting string rom RGB values
+        [BG] constructs color formatting string rom RGB values
         """
         if not(0 <= r < 256 or 0 <= g < 256 or 0 <= b < 256):
             raise ValueError("Invalid RGB values")
@@ -62,42 +63,56 @@ class BGRGB:
 
 #SECTION - Style
 class STYLE(Enum):
-    RESET  = "\u001b[22m\u001b[23m\u001b[24m\u001b[25m\u001b[27m\u001b[28m\u001b[29m"
+    RESET   = "\u001b[22m\u001b[23m\u001b[24m\u001b[25m\u001b[27m\u001b[28m\u001b[29m"
     # resets all active styles
-    BOLD   = "\u001b[1m"
-    ITALIC = "\u001b[3m"
-    UNDER  = "\u001b[4m"
-    BLNK   = "\u001b[5m"
-    REVERSE= "\u001b[7m"
-    HIDEN  = "\u001b[8m"
+    BOLD    = "\u001b[1m"
+    ITALIC  = "\u001b[3m"
+    UNDER   = "\u001b[4m"
+    BLNK    = "\u001b[5m"
+    REVERSE = "\u001b[7m"
+    HIDDEN  = "\u001b[8m"
 #---------------------------------------------------------------------------
 #!SECTION
 
 
 #SECTION - Screen
 class Scr:
+    @staticmethod
     def clear_os():
         os.system('cls' if os.name == 'nt' else 'clear')
     
+    @staticmethod
+    def color_on():
+        if platform.system() == "Windows":
+            os.system("color")
+        # FIXME: Unexpected behavior on other platforms
+    
+    @staticmethod
     def clear():
         iwrite("\u001b[2J\u001b[0;0H")
 
+    @staticmethod
     def clear_line():
         iwrite("\u001b[2K")
 
+    @staticmethod
     def reset_mode():
         # resets all active styles and colors
         iwrite("\u001b[0m")
-        
+    
+    @staticmethod
     def maxx() -> int:
         return os.get_terminal_size().columns
     
+    @staticmethod
     def maxy() -> int:
         return os.get_terminal_size().lines
     
+    @staticmethod
     def midx() -> int:
         return os.get_terminal_size().columns // 2
     
+    @staticmethod
     def midy() -> int:
         return os.get_terminal_size().lines // 2
 #---------------------------------------------------------------------------
@@ -106,55 +121,73 @@ class Scr:
 
 #SECTION - Cursor
 class Cur:
+    @staticmethod
     def up(n: int = 1):
         iwrite(f"\u001b[{n}A")
 
+    @staticmethod
     def down(n: int = 1):
         iwrite(f"\u001b[{n}B")
 
+    @staticmethod
     def left(n: int = 1):
         iwrite(f"\u001b[{n}D")
 
+    @staticmethod
     def right(n: int = 1):
         iwrite(f"\u001b[{n}C")
 
+    @staticmethod
     def prev_line(n: int = 1):
         iwrite(f"\u001b[{n}F")
 
+    @staticmethod
     def next_line(n: int = 1):
         iwrite(f"\u001b[{n}E")
 
+    @staticmethod
     def to(line: int, col: int):
         iwrite(f"\u001b[{line};{col}H")
         
+    @staticmethod
     def to_col(col: int):
         iwrite(f"\u001b[{col}G")
 
+    @staticmethod
     def home():
         iwrite("\u001b[H")
 
+    @staticmethod
     def hide():
         iwrite("\u001b[?25l")
 
+    @staticmethod
     def show():
         iwrite("\u001b[?25h")
 
+    @staticmethod
     def pos_save():
         """
-        WARNING: don't rely on this function while saving/loading postion for non atomic operations
-                 (especially for multiple threads)
-                 for long term storage use list/tuple etc. and Cur.to()
+        WARNING: 
+            
+        Don't rely on this function while saving/loading position for non atomic operations
+        (especially for multiple threads)
+        for long term storage use list/tuple etc. and Cur.to()
         """
         iwrite("\u001b[s")
 
+    @staticmethod
     def pos_restore():
         """
-        WARNING: don't rely on this function while saving/loading postion for non atomic operations
-                 (especially for multiple threads)
-                 for long term storage use list/tuple/etc. and Cur.to()
+        WARNING: 
+        
+        don't rely on this function while saving/loading position for non atomic operations
+        (especially for multiple threads)
+        for long term storage use list/tuple/etc. and Cur.to()
         """
         iwrite("\u001b[u")
         
+    @staticmethod
     def lf(n: int = 1):
         iwrite("\n" * n)
 #---------------------------------------------------------------------------
@@ -162,9 +195,76 @@ class Cur:
 
 
 #---------------------------------------------------------------------------
-#SECTION - Animation
+#SECTION - Sprites and Animations
+class Sprite:    
+    def __init__(self, sprite_data: List[List[str]]):
+        if not isinstance(sprite_data, list) and not isinstance(sprite_data, str):
+            raise TypeError("Sprite data must be a List[str] or str")
+
+        if isinstance(sprite_data, list):
+            
+            if len(sprite_data) == 0:
+                raise ValueError("Zero sized sprite")
+            
+            for row in sprite_data:
+                if not isinstance(row, str):
+                    raise TypeError("Sprite data must be a List[List[str]] or List[str]")
+                
+            height = 0
+            width_values  = []
+            for row in sprite_data:
+                height += 1
+                width_values.append(len(row))
+                
+            is_width_fixed  = len(set(width_values))  == 1
+            if not is_width_fixed:
+                raise ValueError("Non-constant width, width must be constant for each row")
+            width = width_values[0]
+        else:
+            width = len(sprite_data)
+            height = 1
+            sprite_data = [sprite_data]
+            
+        if width < 1:
+            raise ValueError("Sprite has zero width")
+            
+        self._pos = 0,0
+        self._data = sprite_data
+        self._sizes =  (width, height)
+        
+    def set_pos(self, x: int, y: int):
+        if x < 0 or y < 0:
+            raise ValueError("Invalid position")
+        self._pos = (x, y)
+        
+    def get_pos(self) -> Tuple[int, int]:
+        """
+        Returns: 
+            (x, y)
+        """
+        return self._pos
+    
+    def get_width(self) -> int:
+        return self._sizes[0]
+    
+    def get_height(self) -> int:
+        return self._sizes[1]
+    
+    def draw(self):
+        Cur.to(*self._pos)
+        for row in self._data:
+            Cur.pos_save()
+            stdout.write(row)
+            Cur.pos_restore()
+            Cur.down()
+        stdout.flush()
+                        
+                
 class Animation:
-    def __init__(self, frames: List[List[str]], frame_duration_ms: int, repeat: int):
+    
+    _lock = Lock()
+    
+    def __init__(self, frames: List[Sprite], frame_duration_ms: int, repeat: int):
         """
         Simple ascii graphics animation
         Args:
@@ -179,57 +279,53 @@ class Animation:
         
         """
             Example:
-            frames = [[         [               [                                        
-                ["   "],        ["   "],        [" o "],                                                                
-                [" o "],   ->   ["   "],   ->   ["   "],                                               
-                ["   "]         [" o "],        ["   "],                                           
+            frames =
+               [[               [               [                                        
+                 "   ",          "   ",          " o ",                                                                
+                 " o ",   ->     "   ",   ->     "   ",                                               
+                 "   "           " o ",          "   ",                                           
                       ],              ],              ]]                                        
         """
-        
-        width_values  = []
-        height_values = []
-        # all possible values for width and height
-        
+                
         if not isinstance(frames, list):
-            raise TypeError("Frames must be a List[List[str]]")
+            raise TypeError("Frames must be List[Sprite]")
 
         for frame in frames:
-            if not isinstance(frame, list):
-                raise TypeError("Frames must be a List[List[str]]")
-        
+            if not isinstance(frame, Sprite):
+                raise TypeError("Frames must be a List[Sprite]") 
+            
+        height_values = []
+        width_values = []
         for frame in frames:
-            for row in frame:
-                if not isinstance(row, str):
-                    raise TypeError("Frames must be a List[List[str]]") 
-                
+            height_values.append(frame.get_height())
+            width_values.append(frame.get_width())
+
+        is_height_fixed = len(set(height_values)) == 1
+        is_width_fixed = len(set(width_values)) == 1
+        if not is_width_fixed or not is_height_fixed:
+            raise ValueError("All frames must be of the same fixed size")
+        
+        width = width_values[0]
+        height = height_values[0]
+        
         if frame_duration_ms <= 0:
             raise ValueError("Frame duration cannot be 0 or smaller")
         
         if repeat <= 0:
-            raise ValueError("Animtation must be played at least once")
-
-        for frame in frames:
-            height_values.append(len(frame))
-            for row in frame:
-                width_values.append(len(row))
-
-        is_width_fixed  = len(set(width_values))  == 1
-        is_height_fixed = len(set(height_values)) == 1
-        
-        if not is_width_fixed or not is_height_fixed:
-            raise ValueError("All of the frames must be of the same fixed size")
+            raise ValueError("Animation must be played at least once")
         
         self._frames       = frames
         self._repeat       = repeat
         self._duration     = frame_duration_ms
         self._pos          = (0, 0)
-        self._sizes        = (width_values[0], height_values[0])
-        self._clean_frame  = [" "*width_values[0] for _ in range(height_values[0])]
-        self._lock = Lock()
+        self._sizes        = (width, height)
+        self._empty_frame  = Sprite([" "*width_values[0] for _ in range(height_values[0])])
         
     def set_pos(self, x: int, y: int):
         if x < 0 or y < 0:
             raise ValueError("Invalid position")
+        for frame in self._frames:
+            frame.set_pos(x, y)
         self._pos = (x, y)
         
     def get_pos(self) -> Tuple[int, int]:
@@ -238,16 +334,16 @@ class Animation:
             (x, y)
         """
         return self._pos
-    
-    def get_height(self) -> int:
-        return self._sizes[1]
 
     def get_width(self) -> int:
         return self._sizes[0]
     
+    def get_height(self) -> int:
+        return self._sizes[1]
+    
     def set_duration(self, ms: int):
         if ms <= 0:
-            raise ValueError("Invalid duration")
+            raise ValueError("Frame duration cannot be 0 or smaller")
         self._duration = ms
         
     def set_repeat(self, n: int):
@@ -255,27 +351,20 @@ class Animation:
             raise ValueError("Animation must be played at least once")
         self._repeat = n
 
-    def _draw_frame(self, frame: List[str], x: int, y: int):
-        with self._lock:
-            Cur.to(y, x)
-            for row in frame:
-                Cur.pos_save()
-                stdout.write(row)
-                Cur.pos_restore()
-                Cur.down()
-            stdout.flush()
+    def _draw_frame(self, frame: Sprite):
+        with Animation._lock:
+            frame.draw()
 
-    def _play(self, pos: tuple, duration: int, repeat: int, clear: bool):
-        x, y = pos
-        for t in range(repeat):
+    def _play(self, clear_after: bool):
+        for t in range(self._repeat):
             for frame in self._frames:
-                self._draw_frame(frame, x, y)
-                sleep(duration/1000)
-        if clear:
-            self._draw_frame(self._clean_frame, x, y)
+                self._draw_frame(frame)
+                sleep(self._duration/1000)
+        if clear_after:
+            self._draw_frame(self._empty_frame)
 
 
-    def play(self, clear_after: bool = True) -> Thread:
+    def play(self, clear_last_frame: bool = True) -> Thread:
         """
         Create a new thread to play animation, start it and return renderer thread;
         to wait for the animation to finish, call <animation_thread>.join()
@@ -286,7 +375,7 @@ class Animation:
         Returns:
             Thread: renderer thread
         """
-        animation_thread = Thread(target=self._play, args=(self._pos, self._duration, self._repeat, clear_after))
+        animation_thread = Thread(target=self._play, args=(clear_last_frame,))
         animation_thread.start()
         return animation_thread
 #---------------------------------------------------------------------------
@@ -301,23 +390,23 @@ def val(enum_element: Union[FG, FGRGB, BG, BGRGB, BG, BGRGB, STYLE]):
     return enum_element.value
 
 
-def ffg(text: any, fg: Union[BG, BGRGB]):
+def ffg(text: Any, fg: Union[FG, FGRGB]):
     """
-    returns [FG, FGRGB] fomrated text
+    returns [FG, FGRGB] formatted text
     """
     return f"{val(fg)}{text}{val(FG.DEF)}"
 
 
-def fbg(text: any, bg: Union[FG, FGRGB]):
+def fbg(text: Any, bg: Union[BG, BGRGB]):
     """
-    returns [BG, FGRGB] fomrated text
+    returns [BG, FGRGB] formatted text
     """
     return f"{val(bg)}{text}{val(BG.DEF)}"
 
 
-def fstyle(text: any, style: STYLE):
+def fstyle(text: Any, style: STYLE):
     """
-    returns [STYLE] fomrated text
+    returns [STYLE] formatted text
     """
     return f"{val(style)}{text}{val(STYLE.RESET)}"
 
@@ -326,7 +415,7 @@ def fstyle(text: any, style: STYLE):
 class Format:
     """
     Used for style consistency
-    and creating set of commonly used styels
+    and creating set of commonly used styles
     """
     fg: Union[FG, FGRGB]      = FG.DEF
     bg: Union[BG, BGRGB]      = BG.DEF
@@ -352,7 +441,7 @@ def set_format(format: Format):
 
 
 #SECTION - Write functions
-def iwrite(text: any = "\n"):
+def iwrite(text: Any = "\n"):
     """
     write with immediate flush
     """
@@ -361,7 +450,7 @@ def iwrite(text: any = "\n"):
     stdout.flush()
  
     
-def write(text: any = "\n"):
+def write(text: Any = "\n"):
     """
     Write without flush (this function just a sugar)
     """
@@ -369,9 +458,9 @@ def write(text: any = "\n"):
     stdout.write(text)
     
 
-def writef(text: any, format: Format):
+def writef(text: Any, format: Format):
     """
-    Write formated text; automatically resets all styles and colors after writing
+    Write formatted text; automatically resets all styles and colors after writing
     (Formatted means not a Python f-string but a formatted terminal)
     """
     set_format(format)
@@ -397,7 +486,7 @@ def writebox(text: str, x0: int, y0: int, x1: int, y1: int):
         x0 (int): top left corner x
         y0 (int): top left corner y
         x1 (int): bottom right corner x
-        y1 (int): bottom right cornre y
+        y1 (int): bottom right corner y
         
     Raises:
         ValueError: if box is too small
