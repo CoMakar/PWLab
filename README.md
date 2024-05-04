@@ -13,31 +13,32 @@
 
 - Converts _.png, .jpeg, .jpg_ (further .{image}) into _.wav_ in 2 different modes:
 1.  PBP [ Pixel by pixel ]
-    - Write RGB components as .wav amplitudes
+    - Writes RGB components as .wav amplitudes
     - Options: 
       
-option             | arg      | description
--------------------|----------|------------
-sum_rgb_components | [ bool ] | use sum of R+G+B instead of separate RGB components
-direction          | [ str ]  | **row** - read .{image} row by row; **column** - read .{image} column by column 
+option             | arg  | description
+-------------------|------|------------
+sum_rgb_components | bool | uses sum of R+G+B instead of separate RGB components
+direction          | str  | **row** - read .{image} row by row; **column** - read .{image} column by column 
 
 1. ISM [ Inverse spectrogram method ]
-    - Read entire .{image} as spectrogram and write it as _.wav_ amplitudes
+    - Reads entire .{image} as spectrogram and writes it as _.wav_ amplitudes
     - Must be suitable for many images, but very small and messy images will produce messy result
     - Options: 
 
-option         | arg      | description
----------------|----------|------------
-use_noise      | [ bool ] | should be noise applied to the image or not
-noise_strength | [ str ]  | strength of the applied noisecolumn by column 
+option         | arg  | description
+---------------|------|------------
+use_noise      | bool | whether noise should be applied to the image or not
+noise_strength | str  | strength of the applied noise
  
 - Other options:
 
-option             | arg      | description
--------------------|----------|------------
-sample_rate_locked | [ bool ] | if true, use `sample_rate` value, otherwise sample rate will be computed automatically using linear remapping from
-sample_rate        | [ int ]  | target sample rate for the .wav file. Default: _44 100_ channels    | [ int ] | mono or stereo
-image_scale        | [ int ]  | if this value is other than 1, then image will be prescaled using this scale factor
+option             | arg  | description
+-------------------|------|------------
+sample_rate_locked | bool | if true, uses `sample_rate` value, otherwise sample rate will be computed automatically using linear remapping
+sample_rate        | int  | target sample rate of the output .wav file
+channels           | int  | mono or stereo
+image_scale        | int  | if this value is other than 1, then image will be prescaled using this scale factor
 
 - Options source: config file
 
