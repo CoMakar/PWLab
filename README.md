@@ -11,7 +11,7 @@
 
 ![WAVORIZER_EXAMPLE](Examples/Wavorizer_1.png)
 
-- Converts _.png, .jpeg, .jpg_ (further .{image}) into _.wav_ in 2 different modes:
+- Converts _.png, .jpeg, .jpg_ ( further .{image} ) into _.wav_ in 2 different modes:
 1.  PBP [ Pixel by pixel ]
     - Writes RGB components as .wav amplitudes
     - Options: 
@@ -71,13 +71,13 @@ image_scale        | int  | if this value is other than 1, then image will be pr
 
 ## Examples
 
-**HEXng**: `Notepad++.exe [ column: 1000 ]`
+**HEXng - Notepad++.exe ~ columns: 1000**
 <img src="Examples/notepad++.exe.png" style="border-radius: 32px"> 
 
-**Wavorizer**: `Logo [ scanlines: 12 ] # Scanlines are deprecated`
+**Wavorizer - Logo**
 <img src="Examples/Logo_Both.png" style="border-radius: 32px"> 
 
-**Wavorizer**: `2B2T Spawn`
+**Wavorizer - 2B2T Spawn**
 <img src="Examples/2B2T.png" style="border-radius: 32px"> 
 
 
