@@ -10,6 +10,7 @@ pillow = "*"
 tqdm = "*"
 pypng = "*"
 pyinstaller = "*"
+cerberus = "*"
 
 [dev-packages]
 
