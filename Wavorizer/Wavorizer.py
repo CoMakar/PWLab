@@ -26,8 +26,8 @@ from scipy.ndimage import sobel
 from cerberus import Validator, SchemaError
 
 from src.Common.force_input import force_input
-from src.Common.JSONConfig import JSONConfig
-from src.Common.Timer import Timer
+from src.Common.json_config import JSONConfig
+from src.Common.timer import Timer
 from src.TermUtils import *
 
 

@@ -18,7 +18,7 @@ import png
 from tqdm import trange
 
 from src.Common.force_input import force_input
-from src.Common.Timer import Timer
+from src.Common.timer import Timer
 from src.TermUtils import *
 
 
