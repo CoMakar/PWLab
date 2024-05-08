@@ -1,10 +1,10 @@
-# Version 1.0.3
+# Version 1.0.4
 
 ## HEXng
 
 ![HEXNG_EXAMPLE](Examples/Hexng_1.png)
 
-- Converts _any file_ into _.png_ with corresponding name
+- Converts _any file_ into _.png_
 - Options source: keyboard
 
 ## Wavorizer
@@ -13,13 +13,13 @@
 
 - Converts _.png, .jpeg, .jpg_ (further .{image}) into _.wav_ in 2 different modes:
 1.  PBP [ Pixel by pixel ]
-    - Writes RGB components as .wav amplitudes
+    - Reads RGB components and writes them as .wav amplitudes
     - Options: 
       
 option             | arg  | description
 -------------------|------|------------
 sum_rgb_components | bool | uses sum of R+G+B instead of separate RGB components
-direction          | str  | **row** - read .{image} row by row; **column** - read .{image} column by column 
+direction          | str  | **rows** - reads .{image} row by row; **cols** - reads .{image} column by column 
 
 1. ISM [ Inverse spectrogram method ]
     - Reads entire .{image} as spectrogram and writes it as _.wav_ amplitudes
@@ -30,14 +30,15 @@ option         | arg  | description
 ---------------|------|------------
 use_noise      | bool | whether noise should be applied to the image or not
 noise_strength | str  | strength of the applied noise
+detect_edges   | bool | use the sobel function to detect the edges of objects
  
 - Other options:
 
 option             | arg  | description
 -------------------|------|------------
-sample_rate_locked | bool | if true, uses `sample_rate` value, otherwise sample rate will be computed automatically using linear remapping
+sample_rate_mode   | str  | if **static**, `sample_rate` value will be ues, if **dynamic** sample rate will be computed automatically using linear remapping
 sample_rate        | int  | target sample rate of the output .wav file
-channels           | int  | mono or stereo
+channels           | int  | mono (1) or stereo (2)
 image_scale        | int  | if this value is other than 1, then image will be prescaled using this scale factor
 
 - Options source: config file
@@ -54,20 +55,20 @@ image_scale        | int  | if this value is other than 1, then image will be pr
 {
     "mode": "PBP",
     "channels": 1,
-    "sample_rate_locked": true,
+    "sample_rate_mode": "static",
     "sample_rate": 44100,
     "image_scale": 1,
     "PBP": {
         "sum_rgb_components": false,
-        "direction": "row"
+        "direction": "rows"
     },
     "ISM": {
         "use_noise": true,
-        "noise_strength": 0.5
+        "noise_strength": 0.5,
+        "detect_edges": false
     }
 }
 ```
-
 
 ## Examples
 
@@ -79,7 +80,3 @@ image_scale        | int  | if this value is other than 1, then image will be pr
 
 **Wavorizer**: `2B2T Spawn`
 <img src="Examples/2B2T.png" style="border-radius: 32px"> 
-
-
-
-
