@@ -1,6 +1,7 @@
+include .build_info
+
 pyi=pipenv run pyinstaller
-rmrf=rd /s /q
-ifex=if exist
+version=v$(BUILD_VERSION)
 
 wavorizer:
 	$(pyi) wavorizer.spec
@@ -8,10 +9,15 @@ wavorizer:
 hexng:
 	$(pyi) hexng.spec
 
-all: wavorizer hexng
+pack:
+	if not exist bin mkdir bin
+	xcopy .\dist\hexng.exe .\bin\${BUILD_NAME}\hexng\\ /Y
+	xcopy .\dist\wavorizer.exe .\bin\${BUILD_NAME}\wavorizer\\ /Y
+	if not exist .versions mkdir .versions
+	tar -cvf "./.versions/${BUILD_NAME}_${version}_${BUILD_PLATFORM}.zip" -C "./bin/" "${BUILD_NAME}"
 
 clear:
-	@$(ifex) build $(rmrf) build
-	@$(ifex) dist $(rmrf) dist
+	if exist build rd /s /q build
+	if exist dist rd /s /q dist
 
-.PHONY:	wavorizer hexng
+all: hexng wavorizer pack clear

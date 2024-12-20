@@ -5,7 +5,7 @@ block_cipher = None
 
 
 a = Analysis(
-    ['./HEXng/hexng.py'],
+    ['./src/hexng/main.py'],
     pathex=[],
     binaries=[],
     datas=[],

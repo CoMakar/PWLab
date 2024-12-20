@@ -5,7 +5,7 @@ block_cipher = None
 
 
 a = Analysis(
-    ['./Wavorizer/wavorizer.py'],
+    ['./src/wavorizer/main.py'],
     pathex=[],
     binaries=[],
     datas=[],

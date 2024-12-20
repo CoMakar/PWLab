@@ -1,15 +1,15 @@
-# Version 1.0.4
+# Version 1.0.5
 
 ## HEXng
 
-![HEXNG_EXAMPLE](Examples/Hexng_1.png)
+![HEXNG_EXAMPLE](examples/Hexng_1.png)
 
 - Converts _any file_ into _.png_
 - Options source: keyboard
 
 ## Wavorizer
 
-![WAVORIZER_EXAMPLE](Examples/Wavorizer_1.png)
+![WAVORIZER_EXAMPLE](examples/Wavorizer_1.png)
 
 - Converts _.png, .jpeg, .jpg_ ( further .{image} ) into _.wav_ in 2 different modes:
 1.  PBP [ Pixel by pixel ]
@@ -48,7 +48,7 @@ image_scale        | int  | if this value is other than 1, then image will be pr
 > .{image} with **width** x **height** > 1e8 will be skipped.
 > This value is also used for remapping as max value of initial range.
 > Look at the sources if you really want to edit it:
-> Wavorizer.py :: MAX_IMAGE_LIN_SIZE = 1e8
+> src.wavorizer.app.py :: MAX_IMAGE_LIN_SIZE = 1e8
 
 ## Complete config structure ( Default values ):
 ``` JSON
@@ -70,13 +70,63 @@ image_scale        | int  | if this value is other than 1, then image will be pr
 }
 ```
 
+## Installation
+
+### From Release
+
+Pre-built version is available. You can download it from the [Releases](https://github.com/CoMakar/PWLab/releases).
+
+> [!NOTE]
+> Executables were built using [PyInstaller](https://pyinstaller.org/en/stable/)
+> [Windows 10 x64]
+
+### Build it yourself
+
+> [!NOTE]
+> This project uses [Pipenv](https://pipenv.pypa.io/en/latest/) to manage virtual environment and all the dependencies.
+> Make sure to install it first.
+
+1. Clone the repository:
+
+    ```bash
+    git clone https://github.com/CoMakar/PWLab.git
+    cd PWLab
+    ```
+
+2. Install with dev dependencies
+
+    ```bash
+    pipenv install --dev
+    ```
+
+3. Use make file or pyinstaller itself to build the project
+
+    ```bash
+    make all
+    # - or -
+    pyinstaller hexng.spec
+    pyinstaller wavorizer.spec
+    ```
+
+4. Navigate to ./dist/ or ./bin/pwlab directory to find the executables
+
+    ```bash
+    cd ./bin/pwlab
+    ls -> hexng, wavorizer
+    cd ./hexng
+    ./hexng
+    # - or -
+    cd ./dist
+    ./hexng
+    ```
+
 ## Examples
 
 ### HEXng: `Notepad++.exe`
-<img src="Examples/notepad++.exe.png" style="border-radius: 32px"> 
+<img src="examples/notepad++.exe.png" style="border-radius: 32px"> 
 
 ### Wavorizer: `Logo`
-<img src="Examples/Logo_Both.png" style="border-radius: 32px"> 
+<img src="examples/Logo_Both.png" style="border-radius: 32px"> 
 
 ### Wavorizer: `2B2T Spawn`
-<img src="Examples/2B2T.png" style="border-radius: 32px"> 
+<img src="examples/2B2T.png" style="border-radius: 32px"> 

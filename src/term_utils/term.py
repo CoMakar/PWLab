@@ -29,7 +29,7 @@ class FGRGB:
         """
         [FG] constructs color formatting string rom RGB values
         """
-        if not(0 <= r < 256 or 0 <= g < 256 or 0 <= b < 256):
+        if not (0 <= r < 256 or 0 <= g < 256 or 0 <= b < 256):
             raise ValueError("Invalid RGB values")
         self.value = f"\u001b[38;2;{r};{g};{b}m"
 
@@ -54,7 +54,7 @@ class BGRGB:
         """
         [BG] constructs color formatting string rom RGB values
         """
-        if not(0 <= r < 256 or 0 <= g < 256 or 0 <= b < 256):
+        if not (0 <= r < 256 or 0 <= g < 256 or 0 <= b < 256):
             raise ValueError("Invalid RGB values")
         self.value = f"\u001b[48;2;{r};{g};{b}m"
 #---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ class Cur:
         """
         WARNING: 
             
-        Don't rely on this function while saving/loading position for non atomic operations
+        Don't rely on this function while saving/loading position for non-atomic operations
         (especially for multiple threads)
         for long term storage use list/tuple etc. and Cur.to()
         """
@@ -181,7 +181,7 @@ class Cur:
         """
         WARNING: 
         
-        don't rely on this function while saving/loading position for non atomic operations
+        don't rely on this function while saving/loading position for non-atomic operations
         (especially for multiple threads)
         for long term storage use list/tuple/etc. and Cur.to()
         """
@@ -197,7 +197,7 @@ class Cur:
 #---------------------------------------------------------------------------
 #SECTION - Sprites and Animations
 class Sprite:    
-    def __init__(self, sprite_data: List[List[str]]):
+    def __init__(self, sprite_data: Union[List[str], str]):
         if not isinstance(sprite_data, list) and not isinstance(sprite_data, str):
             raise TypeError("Sprite data must be a List[str] or str")
 
@@ -208,15 +208,15 @@ class Sprite:
             
             for row in sprite_data:
                 if not isinstance(row, str):
-                    raise TypeError("Sprite data must be a List[List[str]] or List[str]")
+                    raise TypeError("Sprite data must be a List[str] or str")
                 
             height = 0
-            width_values  = []
+            width_values = []
             for row in sprite_data:
                 height += 1
                 width_values.append(len(row))
                 
-            is_width_fixed  = len(set(width_values))  == 1
+            is_width_fixed = len(set(width_values)) == 1
             if not is_width_fixed:
                 raise ValueError("Non-constant width, width must be constant for each row")
             width = width_values[0]
@@ -228,9 +228,9 @@ class Sprite:
         if width < 1:
             raise ValueError("Sprite has zero width")
             
-        self._pos = 0,0
+        self._pos = 0, 0
         self._data = sprite_data
-        self._sizes =  (width, height)
+        self._sizes = (width, height)
         
     def set_pos(self, x: int, y: int):
         if x < 0 or y < 0:
@@ -314,12 +314,12 @@ class Animation:
         if repeat <= 0:
             raise ValueError("Animation must be played at least once")
         
-        self._frames       = frames
-        self._repeat       = repeat
-        self._duration     = frame_duration_ms
-        self._pos          = (0, 0)
-        self._sizes        = (width, height)
-        self._empty_frame  = Sprite([" "*width_values[0] for _ in range(height_values[0])])
+        self._frames      = frames
+        self._repeat      = repeat
+        self._duration    = frame_duration_ms
+        self._pos         = (0, 0)
+        self._sizes       = (width, height)
+        self._empty_frame = Sprite([" " * width_values[0] for _ in range(height_values[0])])
         
     def set_pos(self, x: int, y: int):
         if x < 0 or y < 0:
@@ -363,14 +363,13 @@ class Animation:
         if clear_after:
             self._draw_frame(self._empty_frame)
 
-
     def play(self, clear_last_frame: bool = True) -> Thread:
         """
         Create a new thread to play animation, start it and return renderer thread;
         to wait for the animation to finish, call <animation_thread>.join()
 
         Args:
-            clear_after (bool, optional): erase last rendered frame or not. Defaults to True.
+            clear_last_frame (bool, optional): erase last rendered frame or not. Defaults to True.
 
         Returns:
             Thread: renderer thread
@@ -422,7 +421,7 @@ class Format:
     style: Union[STYLE, None] = None
     
 
-def set_color(fg: Union[FG, FGRGB] , bg: Union[BG, BGRGB]  = BG.DEF):
+def set_color(fg: Union[FG, FGRGB], bg: Union[BG, BGRGB] = BG.DEF):
     iwrite(fg.value)
     iwrite(bg.value)
 
@@ -431,11 +430,11 @@ def set_style(style: STYLE = STYLE.RESET):
     iwrite(style.value)
 
 
-def set_format(format: Format):
-    if format.style:
-        set_style(format.style)
+def set_format(text_format: Format):
+    if text_format.style:
+        set_style(text_format.style)
     
-    set_color(format.fg, format.bg)
+    set_color(text_format.fg, text_format.bg)
 #---------------------------------------------------------------------------
 #!SECTION
 
@@ -458,12 +457,12 @@ def write(text: Any = "\n"):
     stdout.write(text)
     
 
-def writef(text: Any, format: Format):
+def writef(text: Any, text_format: Format):
     """
     Write formatted text; automatically resets all styles and colors after writing
     (Formatted means not a Python f-string but a formatted terminal)
     """
-    set_format(format)
+    set_format(text_format)
     write(text)
     Scr.reset_mode()
     

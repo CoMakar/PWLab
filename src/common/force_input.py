@@ -1,5 +1,6 @@
 from typing import List, Callable, Any, Union
 
+
 def force_input(repeat_msg: str = ">>> ", bad_input_msg: Union[str, None] = None, error_msg: Union[str, None] = None, *,
                 func: Callable[[str], Any] = lambda s: s, predicates: List[Callable[[Any], bool]] = []):
     """input function that will force user to enter a correct data

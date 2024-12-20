@@ -107,7 +107,7 @@ class JSONConfig:
     def __getitem__(self, key):
         return self.__config[key]
             
-    def __str__ (self):
+    def __str__(self):
         return str(self.as_dict())
     
     def __repr__(self):

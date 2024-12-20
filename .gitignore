@@ -1,7 +1,9 @@
-**/__pycache__/
-**/build/
-**/dist/
+.idea/
+.versions/
+build/
+dist/
+bin/
 **/in/
 **/out/
-/Distrib/
 config.json
+__pycache__/
