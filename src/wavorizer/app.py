@@ -3,27 +3,25 @@
 Created on Tue Jun 23 21:07:56 2020
 """
 
-
-from dataclasses import dataclass
 import io
 import math
 import sys
+from dataclasses import dataclass
+from enum import StrEnum, IntEnum
 from pathlib import Path
 from typing import Union
-from enum import StrEnum, IntEnum
 
 import numpy as np
 from PIL import Image
-from scipy.io.wavfile import write as wav_write
-from scipy.signal import ShortTimeFFT
-from scipy.ndimage import sobel
 from cerberus import Validator
+from scipy.io.wavfile import write as wav_write
+from scipy.ndimage import sobel
+from scipy.signal import ShortTimeFFT
 
 from src.common.force_input import force_input
 from src.common.json_config import JSONConfig
 from src.common.timer import Timer
 from src.term_utils import *
-
 
 Number = Union[int, float]
 
@@ -38,9 +36,18 @@ class SampleRateMode(StrEnum):
     DYNAMIC = "dynamic"
 
 
-class Direction(StrEnum):
+class ScanMode(StrEnum):
     ROWS = "rows"
     COLS = "cols"
+    ZIGZAG = "zigzag"
+    SPIRAL = "spiral"
+
+
+class PostFilter(StrEnum):
+    NONE = "none"
+    SUM = "sum"
+    MULT = "mult"
+    XOR = "xor"
 
 
 APP_PATH = Path(sys.argv[0]).parent
@@ -64,10 +71,13 @@ REMAPPER_POWER = 0.5
 REMAPPER_EXP_KOEF = 1
 
 MODES = (Mode.ISM, Mode.PBP)
-DIRECTIONS = (Direction.ROWS, Direction.COLS)
 SAMPLERATE_MODES = (SampleRateMode.STATIC, SampleRateMode.DYNAMIC)
 SAMPLERATE_RANGE = range(512, 262144 + 1)
 IMG_SCALE_RANGE = range(1, 10 + 1)
+
+SCAN_MODES = (ScanMode.ROWS, ScanMode.COLS, ScanMode.ZIGZAG, ScanMode.SPIRAL)
+POST_FILTERS = (PostFilter.NONE, PostFilter.SUM, PostFilter.MULT, PostFilter.XOR)
+QUANTIZATION_LEVELS = range(0, 16 + 1)
 
 
 class Resolution(IntEnum):
@@ -91,8 +101,9 @@ CFG_DEFAULT = JSONConfig(
         "sample_rate": 44100,
         "image_scale": 1,
         "PBP": {
-            "sum_rgb_components": False,
-            "direction": Direction.ROWS
+            "post_filter": "none",
+            "quantization_level": 0,
+            "scan_mode": ScanMode.ROWS
         },
         "ISM": {
             "use_noise": True,
@@ -120,11 +131,13 @@ CFG_VALIDATOR = Validator(
         "PBP": {
             "type": "dict",
             "schema": {
-                "sum_rgb_components": {"type": "boolean"},
-                "direction": {
-                    "type": "string",
-                    "allowed": DIRECTIONS,
+                "post_filter": {"type": "string", "allowed": POST_FILTERS},
+                "quantization_level": {
+                    "type": "integer",
+                    "min": QUANTIZATION_LEVELS[0],
+                    "max": QUANTIZATION_LEVELS[-1]
                 },
+                "scan_mode": {"type": "string", "allowed": SCAN_MODES},
             },
         },
         "ISM": {
@@ -161,7 +174,7 @@ class Parameters:
 
         sample_rate = (
             config.sample_rate
-            if config.sample_rate_mode is SampleRateMode.STATIC
+            if config.sample_rate_mode == SampleRateMode.STATIC
             else round(
                 remap_sample_rate_from_size(
                     linear_size, SampleRateRange.MIN, SampleRateRange.LOW, SampleRateRange.HIGH, SampleRateRange.MAX,
@@ -174,21 +187,37 @@ class Parameters:
         return cls(resize, scale, width, height, linear_size, sample_rate)
 
 
-def pbp(image: Image, linear_size: int,
-        direction: str, use_sum_rgb: bool):
+def pbp(image: Image, scan_mode: str,
+        post_filter: str, quantization_level: int):
     # PBP - pixel by pixel method
 
     image = image.convert("RGB")
     image_data = np.array(image)
+    color_axis = 2
 
-    if direction == "column":
-        # transpose an image to replace rows with columns
-        image_data = image_data.transpose((1, 0, 2))
+    # quantize colors
+    if quantization_level > 0:
+        image_data = (image_data / 255 * quantization_level).round() * (255 / quantization_level)
+        image_data = image_data.astype(np.uint8)
 
-    if use_sum_rgb:
-        # sum rgb components into a single value
-        image_data = image_data.reshape(linear_size, 3)
-        image_data = np.sum(image_data, 1, np.uint8)
+    # handle different scan modes
+    match scan_mode:
+        case ScanMode.COLS:
+            image_data = image_data.transpose((1, 0, 2))
+        case "zigzag":
+            image_data = zigzag_scan(image_data)
+        case "spiral":
+            image_data = spiral_scan(image_data)
+            color_axis = 1
+
+    # apply post_filter
+    match post_filter:
+        case PostFilter.SUM:
+            image_data = np.sum(image_data, axis=color_axis, dtype=np.uint8)
+        case PostFilter.MULT:
+            image_data = np.multiply.reduce(image_data, axis=color_axis, dtype=np.uint8)
+        case PostFilter.XOR:
+            image_data = np.bitwise_xor.reduce(image_data, axis=color_axis, keepdims=True)
 
     # return as 1dim array of audio data
     return image_data.flatten()
@@ -222,6 +251,54 @@ def ism(image: Image,
     return stfft.istft(image_data)
 
 
+def zigzag_scan(image_data):
+    height, width = image_data.shape[:2]
+    result = np.zeros_like(image_data)
+
+    for y in range(height):
+        if y % 2 == 0:
+            result[y] = image_data[y]
+        else:
+            result[y] = image_data[y, ::-1]
+
+    return result
+
+
+def spiral_scan(image_data):
+    h, w = image_data.shape[:2]
+    result = np.zeros([h * w, 3], dtype=image_data.dtype)
+    
+    x, y = 0, 0
+    dx, dy = 1, 0
+    index = 0
+
+    left, right = 0, w - 1
+    top, bottom = 0, h - 1
+
+    for _ in range(h * w):
+        if 0 <= x < w and 0 <= y < h:
+            result[index] = image_data[y, x]
+            index += 1
+
+        if x == right and y == top and dy == 0:
+            dx, dy = 0, 1
+            top += 1
+        elif x == right and y == bottom and dx == 0:
+            dx, dy = -1, 0
+            right -= 1
+        elif x == left and y == bottom and dy == 0:
+            dx, dy = 0, -1
+            bottom -= 1
+        elif x == left and y == top and dx == 0:
+            dx, dy = 1, 0
+            left += 1
+
+        x += dx
+        y += dy
+
+    return result
+
+
 def clamp(value: Number,
           min_value: Number = 0, max_value: Number = 1):
     return max(min(value, max_value), min_value)
@@ -231,22 +308,21 @@ def remap_sample_rate_from_size(linear_size,
                                 min_sample_rate, low_sample_rate, high_sample_rate, max_sample_rate,
                                 low_res, mid_res, high_res,
                                 power, exp_multiplier):
-
     if linear_size <= low_res:
         sample_rate = min_sample_rate + \
-            ((linear_size / low_res) ** power) * \
-            (low_sample_rate - min_sample_rate)
+                      ((linear_size / low_res) ** power) * \
+                      (low_sample_rate - min_sample_rate)
 
     elif linear_size <= mid_res:
         normalized_area = (linear_size - low_res) / (mid_res - low_res)
         sample_rate = low_sample_rate + normalized_area * \
-            (high_sample_rate - low_sample_rate)
+                      (high_sample_rate - low_sample_rate)
 
     else:
         normalized_area = (linear_size - mid_res) / (high_res - mid_res)
         sample_rate = high_sample_rate + \
-            (max_sample_rate - high_sample_rate) * \
-            (1 - math.exp(-normalized_area * exp_multiplier))
+                      (max_sample_rate - high_sample_rate) * \
+                      (1 - math.exp(-normalized_area * exp_multiplier))
 
     return round(sample_rate)
 
@@ -282,7 +358,7 @@ class App:
         [write(f"\t{ffg('+', FG.GREEN)} {file.name}\n") for file in img_files]
         [write(f"\t{ffg('-', FG.RED)} {ffg(file.name, C_GRAY)}\n")
          for file in other_files]
-        
+
         write()
 
         write("Mode: ")
@@ -309,10 +385,10 @@ class App:
 
         if config.mode == Mode.PBP:
             write(f"{ffg('[*]', C_GRAY)} {fstyle(Mode.PBP, STYLE.BOLD)}:\n")
-            write(f"\tDirection: {ffg(config.PBP.direction, FG.YEL)}\n")
-            if config.PBP.sum_rgb_components:
+            write(f"\tScan mode: {ffg(config.PBP.scan_mode, FG.YEL)}\n")
+            if config.PBP.post_filter != "none":
                 write(
-                    f"\tUse sum of {ffg('r', FG.RED)}{ffg('+', C_GRAY)}{ffg('g', FG.GREEN)}{ffg('+', C_GRAY)}{ffg('b', FG.BLUE)} components"
+                    f"\tApply `{fstyle(config.PBP.post_filter, STYLE.ITALIC)}` to {ffg('r', FG.RED)}{ffg('g', FG.GREEN)}{ffg('b', FG.BLUE)} components"
                 )
             else:
                 write(
@@ -363,8 +439,8 @@ class App:
 
             params = Parameters.from_image(image, config)
             wav_path = (
-                OUT_FOLDER /
-                f"{img_path.name}_{config.mode}_{params.sample_rate}HZ.wav"
+                    OUT_FOLDER /
+                    f"{img_path.name}_{config.mode}_{params.sample_rate}HZ.wav"
             )
             current_timer = Timer().tic()
 
@@ -400,9 +476,10 @@ class App:
 
             if config.mode == "PBP":
                 audio_data = pbp(
-                    image, params.linear_size,
-                    config.PBP.direction,
-                    config.PBP.sum_rgb_components
+                    image,
+                    config.PBP.scan_mode,
+                    config.PBP.post_filter,
+                    config.PBP.quantization_level
                 )
 
             elif config.mode == "ISM":
@@ -458,8 +535,8 @@ class App:
         if not CFG_VALIDATOR.validate(config.as_dict()):
             write("[X] Config validation failed:\n")
 
-            for item, errors in CFG_VALIDATOR.errors.items():
-                err_str = f"\t{ffg('>', FG.RED)} {item:<30} : {ffg(';'.join(errors), FG.RED)}\n"
+            for entry in self.flatten_errors(CFG_VALIDATOR.errors):
+                err_str = f"\t{ffg('>', FG.RED)} {entry[0]:<30} : {ffg((entry[1]), FG.RED)}\n"
                 write(err_str)
 
             write()
@@ -477,6 +554,24 @@ class App:
             return
 
         return config
+
+    def flatten_errors(self, data, path=None, result=None):
+        if path is None:
+            path = []
+        if result is None:
+            result = []
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                self.flatten_errors(value, path + [key], result)
+        elif isinstance(data, list):
+            for item in data:
+                self.flatten_errors(item, path, result)
+        else:
+            full_path = ":".join(path)
+            result.append((full_path, data))
+
+        return result
 
     def run(self):
         Scr.color_on()

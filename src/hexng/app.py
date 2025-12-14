@@ -3,7 +3,6 @@
 Created on Tue Dec  8 21:26:19 2020
 """
 
-
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +16,6 @@ from src.common.force_input import force_input
 from src.common.json_config import JSONConfig
 from src.common.timer import Timer
 from src.term_utils import *
-
 
 APP_PATH = Path(sys.argv[0]).parent
 IN_FOLDER = APP_PATH / "in"
@@ -193,8 +191,8 @@ class App:
         if not CFG_VALIDATOR.validate(config.as_dict()):
             write("[X] Config validation failed:\n")
 
-            for item, errors in CFG_VALIDATOR.errors.items():
-                err_str = f"\t{ffg('>', FG.RED)} {item:<30} : {ffg(';'.join(errors), FG.RED)}\n"
+            for entry in self.flatten_errors(CFG_VALIDATOR.errors):
+                err_str = f"\t{ffg('>', FG.RED)} {entry[0]:<30} : {ffg((entry[1]), FG.RED)}\n"
                 write(err_str)
 
             write()
@@ -212,6 +210,24 @@ class App:
             return
 
         return config
+
+    def flatten_errors(self, data, path=None, result=None):
+        if path is None:
+            path = []
+        if result is None:
+            result = []
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                self.flatten_errors(value, path + [key], result)
+        elif isinstance(data, list):
+            for item in data:
+                self.flatten_errors(item, path, result)
+        else:
+            full_path = ":".join(path)
+            result.append((full_path, data))
+
+        return result
 
     def run(self):
         Scr.color_on()

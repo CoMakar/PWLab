@@ -1,4 +1,4 @@
-# Version 1.0.5
+# Version 1.0.6
 
 ## HEXng
 
@@ -16,10 +16,11 @@
     - Reads RGB components and writes them as .wav amplitudes
     - Options: 
       
-option             | arg  | description
--------------------|------|------------
-sum_rgb_components | bool | uses sum of R+G+B instead of separate RGB components
-direction          | str  | **rows** - reads .{image} row by row; **cols** - reads .{image} column by column 
+option             | arg | description
+-------------------|-----|------------
+post_filter        | str | apply a filter to each pixel (**none**, **sum**, **mul**, **xor**)
+scan_mode          | str | pixel read order (**rows**, **cols**, **zigzag**, **spiral**)
+quantization_level | int | quantize colors before processing
 
 1. ISM [ Inverse spectrogram method ]
     - Reads entire .{image} as spectrogram and writes it as _.wav_ amplitudes
