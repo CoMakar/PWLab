@@ -27,20 +27,20 @@ quantization_level | int | quantize colors before processing
     - Must be suitable for many images, but very small and messy images will produce messy result
     - Options: 
 
-option         | arg  | description
----------------|------|------------
-use_noise      | bool | whether noise should be applied to the image or not
-noise_strength | str  | strength of the applied noise
-detect_edges   | bool | use the sobel function to detect the edges of objects
+option         | arg   | description
+---------------|-------|------------
+detect_edges   | bool  | use the sobel function to detect the edges of objects
+blur_radius    | int   | radius of the blur applid to an image
+noise_strength | float | strength of the applied noise
  
 - Other options:
 
-option             | arg  | description
--------------------|------|------------
-sample_rate_mode   | str  | if **static**, `sample_rate` value will be ues, if **dynamic** sample rate will be computed automatically using linear remapping
-sample_rate        | int  | target sample rate of the output .wav file
-channels           | int  | mono (1) or stereo (2)
-image_scale        | int  | if this value is other than 1, then image will be prescaled using this scale factor
+option             | arg | description
+-------------------|-----|------------
+sample_rate_mode   | str | if **static**, `sample_rate` value will be ues, if **dynamic** sample rate will be computed automatically using linear remapping
+sample_rate        | int | target sample rate of the output .wav file
+channels           | int | mono (1) or stereo (2)
+image_scale        | int | if this value is other than 1, then image will be prescaled using this scale factor
 
 - Options source: config file
 
@@ -62,12 +62,13 @@ image_scale        | int  | if this value is other than 1, then image will be pr
   - **ISM**: horizontal scroll
 - Options:
 
-option         | arg | description
----------------|-----|------------
-resolution     | str | output video resolution (**TINY**, **SMALL**, **MEDIUM**, **LARGE**, **FULLHD**)
-fps            | int | frames per second (2-8)
-line_color     | str | scanning line color (**RED**, **GREEN**, **BLUE**, **WHITE**, **BLACK**, **CYAN**, **MAGENTA**, **YELLOW**)
-line_thickness | int | scanning line thickness (1-5)
+option         | arg   | description
+---------------|-------|------------
+resolution     | str   | output video resolution (**TINY**, **SMALL**, **MEDIUM**, **LARGE**, **FULLHD**)
+fps            | int   | frames per second (2-8)
+line_color     | int   | scanning line color (**RED**, **GREEN**, **BLUE**, **WHITE**, **BLACK**, **CYAN**, **MAGENTA**, **YELLOW**)
+area_opacity   | float | opacity of the area under the scanning line
+line_thickness | int   | scanning line thickness (1-5)
 
 - Options source: config file
 - Requires: FFmpeg installed and available in PATH

@@ -13,7 +13,7 @@ from enum import StrEnum, IntEnum
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from rich.console import Console
 from scipy.io.wavfile import write as wav_write
@@ -81,9 +81,9 @@ class PBPConfig(BaseModel):
 
 
 class ISMConfig(BaseModel):
-    use_noise: bool = True
-    noise_strength: float = Field(default=0.5, ge=0.0, le=1.0)
     detect_edges: bool = False
+    blur_radius: int = Field(default=0, ge=0, le=16)
+    noise_strength: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class Config(BaseModel):
@@ -257,6 +257,7 @@ class PBPProcessor(ImageProcessor):
             ql = config.PBP.quantization_level
             image_data = (image_data / 255 * ql).round() * (255 / ql)
             image_data = image_data.astype(np.uint8)
+
         match config.PBP.scan_mode:
             case ScanMode.COLS:
                 image_data = image_data.transpose((1, 0, 2))
@@ -265,6 +266,7 @@ class PBPProcessor(ImageProcessor):
             case ScanMode.SPIRAL:
                 image_data = spiral_scan(image_data)
                 color_axis = 1
+
         match config.PBP.post_filter:
             case PostFilter.SUM:
                 image_data = np.sum(image_data, axis=color_axis, dtype=np.uint16)
@@ -283,23 +285,36 @@ class ISMProcessor(ImageProcessor):
     @staticmethod
     def process(image: Image, config: Config) -> np.ndarray:
         image = image.convert("L")
-        image_data = np.array(image)[::-1] / 255
+        image_np = np.array(image, dtype=np.float32)[::-1] / 255.0
 
-        if config.ISM.use_noise:
+        if config.ISM.detect_edges:
+            edges_x = sobel(image_np, 0)
+            edges_y = sobel(image_np, 1)
+            image_np = np.hypot(edges_x, edges_y)
+
+        if config.ISM.blur_radius > 0:
+            image_temp = Image.fromarray((image_np * 255).astype(np.uint8)[::-1])
+            image_temp = image_temp.filter(ImageFilter.BoxBlur(config.ISM.blur_radius))
+            image_np = np.array(image_temp, dtype=np.float32)[::-1] / 255.0
+
+        if config.ISM.noise_strength > 0:
             noise = (
-                    np.abs(np.random.normal(0, 1, image_data.shape))
+                    np.abs(np.random.normal(0, 1, image_np.shape))
                     * config.ISM.noise_strength
             )
-            image_data *= 1 - noise
-        if config.ISM.detect_edges:
-            edges_x = sobel(image_data, 0)
-            edges_y = sobel(image_data, 1)
-            image_data = np.hypot(edges_x, edges_y)
+            image_np *= 1 - noise
+
+        nperseg = 2 * (image_np.shape[0] - 1)
+        hop = nperseg // 4
+
+        phase = np.random.uniform(-0.01, 0.01, size=image_np.shape)
+        image_np_complex = image_np * np.exp(1j * phase)
+
         stfft = ShortTimeFFT.from_window(
-            "cosine", 1, image_data.shape[0] * 2 - 1, image_data.shape[0]
+            "hann", 1, nperseg, hop,
         )
 
-        return stfft.istft(image_data)
+        return stfft.istft(image_np_complex)
 
 
 class AudioWriter:
@@ -353,7 +368,6 @@ class SpecWriter:
                 ),
                 "ISM": (
                     {
-                        "use_noise": config.ISM.use_noise,
                         "noise_strength": config.ISM.noise_strength,
                         "detect_edges": config.ISM.detect_edges,
                     }
@@ -372,26 +386,30 @@ class FilenameGenerator:
     def generate(img_name: str, config: Config, params: Parameters) -> str:
         base_name = Path(img_name).stem
 
+        channels = "mono" if config.channels == 1 else "stereo"
+
         parts = [
             base_name,
             config.mode,
             f"{params.sample_rate}Hz",
-            f"ch{config.channels}",
+            f"{channels}",
         ]
 
         if config.image_scale != 1:
             parts.append(f"x{config.image_scale}")
         if config.mode == Mode.PBP:
+            if config.PBP.quantization_level > 0:
+                parts.append(f"q{config.PBP.quantization_level}")
             parts.append(config.PBP.scan_mode)
             if config.PBP.post_filter != PostFilter.NONE:
                 parts.append(config.PBP.post_filter)
-            if config.PBP.quantization_level > 0:
-                parts.append(f"q{config.PBP.quantization_level}")
         elif config.mode == Mode.ISM:
-            if config.ISM.use_noise:
-                parts.append(f"noise{int(config.ISM.noise_strength * 100)}")
             if config.ISM.detect_edges:
                 parts.append("edges")
+            if config.ISM.blur_radius > 0:
+                parts.append(f"blur{config.ISM.blur_radius}px")
+            if config.ISM.noise_strength > 0:
+                parts.append(f"noise{int(config.ISM.noise_strength * 100)}")
         return "_".join(parts) + ".wav"
 
 
@@ -416,7 +434,7 @@ class App:
         else:
             console.print("[red]-[/red]")
         if self.config.mode == Mode.PBP:
-            console.print(f"[grey27][*][/grey27] [bold]{Mode.PBP}[/bold]:")
+            console.print(f"[grey27] - [/grey27] [bold]{Mode.PBP}[/bold]:")
             console.print(f"\tScan mode: [yellow]{self.config.PBP.scan_mode}[/yellow]")
 
             if self.config.PBP.post_filter != PostFilter.NONE:
@@ -428,16 +446,25 @@ class App:
                     f"\tUse [red]r[/red][green]g[/green][blue]b[/blue] components separately"
                 )
         elif self.config.mode == Mode.ISM:
-            console.print(f"[grey27][*][/grey27] [bold]{Mode.ISM}[/bold]:")
+            console.print(f"[grey27] - [/grey27] [bold]{Mode.ISM}[/bold]:")
 
             console.print("\tApply noise: ", end="")
-            if self.config.ISM.use_noise:
+            if self.config.ISM.noise_strength > 0:
                 console.print(
-                    f"[green]+[/green [yellow]({self.config.ISM.noise_strength})[/yellow]"
+                    f"[green]+[/green] [dim][{self.config.ISM.noise_strength}][/dim]"
                 )
             else:
                 console.print("[red]-[/red]")
-            console.print("\tEdge detection mode: ", end="")
+
+            console.print("\tApply blur: ", end="")
+            if self.config.ISM.noise_strength > 0:
+                console.print(
+                    f"[green]+[/green] [dim][{self.config.ISM.blur_radius}px][/dim]"
+                )
+            else:
+                console.print("[red]-[/red]")
+
+            console.print("\tEdge detection: ", end="")
             console.print(
                 "[green]on[/green]"
                 if self.config.ISM.detect_edges

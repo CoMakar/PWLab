@@ -123,8 +123,9 @@ class LineColor(Enum):
 
 class Config(BaseModel):
     resolution: ResolutionPreset = ResolutionPreset.FULLHD
-    fps: int = Field(default=4, ge=2, le=8)
+    fps: float = Field(default=2, ge=0.1, le=10.0)
     line_color: LineColor = LineColor.WHITE
+    area_opacity: float = Field(default=0.1, ge=0.0, le=0.5) 
     line_thickness: int = Field(default=1, ge=1, le=5)
 
     model_config = ConfigDict(
@@ -248,14 +249,21 @@ class Overlay:
     def __init__(
             self,
             line_color: tuple[int, int, int],
+            area_opacity: float,
             line_thickness: int,
             axis: Optional[Axis],
             video_size: tuple[int, int],
+            scroll_speed: float,
+            fps: float,
     ):
         self.line_color = line_color[::-1]
+        self.area_opacity = area_opacity
         self.line_thickness = line_thickness
         self.axis = axis
         self.video_width, self.video_height = video_size
+
+        self.scan_step = int(scroll_speed / fps) if scroll_speed > 0 else 0
+
         self.line_pos = (
             self.video_height // 2
             if axis == Axis.VERTICAL
@@ -263,7 +271,16 @@ class Overlay:
         )
 
     def apply(self, frame: np.ndarray) -> np.ndarray:
-        if self.axis == Axis.VERTICAL:
+        if self.axis == Axis.VERTICAL and self.line_pos is not None:
+            if self.scan_step > 0:
+                y_start = self.line_pos
+                y_end = min(self.video_height, self.line_pos + self.scan_step)
+
+                mask = np.zeros((self.video_height, self.video_width, 3), dtype=np.uint8)
+                cv2.rectangle(mask, (0, y_start), (self.video_width, y_end), self.line_color, -1)
+
+                frame[:] = cv2.addWeighted(frame, 1.0, mask, self.area_opacity, 0)
+
             cv2.line(
                 frame,
                 (0, self.line_pos),
@@ -271,7 +288,17 @@ class Overlay:
                 self.line_color,
                 self.line_thickness,
             )
-        elif self.axis == Axis.HORIZONTAL:
+
+        elif self.axis == Axis.HORIZONTAL and self.line_pos is not None:
+            if self.scan_step > 0:
+                x_start = self.line_pos
+                x_end = min(self.video_width, self.line_pos + self.scan_step)
+
+                mask = np.zeros((self.video_height, self.video_width, 3), dtype=np.uint8)
+                cv2.rectangle(mask, (x_start, 0), (x_end, self.video_height), self.line_color, -1)
+
+                frame[:] = cv2.addWeighted(frame, 1.0, mask, self.area_opacity, 0)
+
             cv2.line(
                 frame,
                 (self.line_pos, 0),
@@ -340,7 +367,13 @@ class Renderer:
 
         viewport = Viewport(image_bgr, axis, (vw, vh), self.duration, fps)
         overlay = Overlay(
-            self.config.line_color.value, self.config.line_thickness, axis, (vw, vh)
+            self.config.line_color.value,
+            self.config.area_opacity,
+            self.config.line_thickness,
+            axis,
+            (vw, vh),
+            viewport.scroll_speed,
+            fps
         )
 
         cmd = [
@@ -542,6 +575,8 @@ class App:
             return False
 
     def main(self):
+        Image.MAX_IMAGE_PIXELS = None
+
         if shutil.which("ffmpeg") is None:
             console.print(
                 "[yellow on red bold]:: FFmpeg not found ::[/yellow on red bold]"

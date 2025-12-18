@@ -25,4 +25,4 @@ clear:
 	if exist dist rd /s /q dist
 	if exist bin rd /s /q bin
 
-all: hexng wavorizer wavovideo pack clear
+all: hexng wavorizer wavovideo pack
