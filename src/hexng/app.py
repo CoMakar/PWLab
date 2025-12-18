@@ -1,54 +1,65 @@
 # -*- coding: utf-8 -*-
+
 """
 Created on Tue Dec  8 21:26:19 2020
 """
 
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, ByteString
+from typing import Iterator
 
 import numpy as np
 from PIL import Image
-from cerberus import Validator
+from pydantic import BaseModel, Field, ValidationError
+from rich.console import Console
 
-from src.common.force_input import force_input
-from src.common.json_config import JSONConfig
 from src.common.timer import Timer
-from src.term_utils import *
 
 APP_PATH = Path(sys.argv[0]).parent
 IN_FOLDER = APP_PATH / "in"
 OUT_FOLDER = APP_PATH / "out"
-CFG_PATH = APP_PATH / "config.json"
+CONFIG_FILE = APP_PATH / "config.json"
 
-F_INFO = Format(fg=FG.BLUE)
-F_ERROR = Format(fg=FG.YEL, bg=BG.RED, style=STYLE.BOLD)
-F_OK = Format(fg=FG.GREEN, style=STYLE.ITALIC)
-F_INVERTED = Format(style=STYLE.REVERSE)
-C_GRAY = FGRGB(64, 64, 64)
-F_MISC = Format(fg=C_GRAY)
+console = Console(highlight=False)
 
 BYTE_FILLER = b"\x00"
 RGB_BYTE_SIZE = 3
 
-COLUMNS_RANGE = range(1, 8192 + 1)
 
-CFG_DEFAULT = JSONConfig(
-    {
-        "width": 1024
-    }, True
-)
+class Config(BaseModel):
+    width: int = Field(default=1024, ge=1, le=8192)
 
-CFG_VALIDATOR = Validator(
-    {
-        "width": {
-            "type": "integer",
-            "min": COLUMNS_RANGE[0],
-            "max": COLUMNS_RANGE[-1],
-        },
-    }, require_all=True
-)
+    @classmethod
+    def from_json(cls, path: Path):
+        if not path.exists():
+            instance = cls()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(instance.model_dump_json(indent=4))
+            console.print("[grey27]( Config file created )[/grey27]\n")
+            return instance
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return cls(**data)
+        except ValidationError as e:
+            console.print(
+                "[yellow on red bold]:: Invalid config.json ::[/yellow on red bold]\n"
+            )
+
+            for error in e.errors():
+                field = ".".join(str(loc) for loc in error["loc"])
+                msg = error["msg"]
+                console.print(f"[red]•[/red] [cyan]{field}[/cyan]: {msg}")
+            console.print()
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            console.print(
+                "[yellow on red bold]:: Invalid JSON in config.json ::[/yellow on red bold]"
+            )
+            console.print(f"[red]{e}[/red]\n")
+            sys.exit(1)
 
 
 @dataclass(frozen=True)
@@ -61,7 +72,9 @@ class Parameters:
     file_size: int
 
     @classmethod
-    def from_file(cls, bin_path: Path, width: int, bytes_per_pixel: int = 3):
+    def from_file(
+            cls, bin_path: Path, width: int, bytes_per_pixel: int = RGB_BYTE_SIZE
+    ):
         bytes_per_row = width * bytes_per_pixel
         file_size = bin_path.stat().st_size
         padding = -file_size % bytes_per_row
@@ -73,165 +86,127 @@ class Parameters:
 @dataclass(frozen=True)
 class ImageRow:
     idx: int
-    image_data: Image
+    image_data: np.ndarray
 
 
-def b2image(bin_file: IO, params: Parameters, filler: ByteString):
-    row_idx = 0
-    while buffer := bin_file.read(params.bytes_per_row):
-        if len(buffer) < params.bytes_per_row:
-            buffer += filler * (params.bytes_per_row - len(buffer))
+class BinaryReader:
+    @staticmethod
+    def read_rows(
+            bin_path: Path, params: Parameters, filler: bytes = BYTE_FILLER
+    ) -> Iterator[ImageRow]:
+        with open(bin_path, "rb") as bin_file:
+            row_idx = 0
 
-        row_pixels = np.frombuffer(buffer, dtype=np.uint8).reshape(
-            (1, params.width, params.bytes_per_pixel))
+            while buffer := bin_file.read(params.bytes_per_row):
+                if len(buffer) < params.bytes_per_row:
+                    buffer += filler * (params.bytes_per_row - len(buffer))
+                row_pixels = np.frombuffer(buffer, dtype=np.uint8).reshape(
+                    (1, params.width, params.bytes_per_pixel)
+                )
 
-        yield ImageRow(row_idx, row_pixels)
+                yield ImageRow(row_idx, row_pixels)
+                row_idx += 1
 
-        row_idx += 1
+
+class ImageConverter:
+
+    @staticmethod
+    def convert(bin_path: Path, params: Parameters) -> Image.Image:
+        image = Image.new("RGB", (params.width, params.height))
+
+        try:
+            for row in BinaryReader.read_rows(bin_path, params):
+                image.paste(Image.fromarray(row.image_data, "RGB"), (0, row.idx))
+            return image
+        except OSError as e:
+            raise RuntimeError(f"Failed to read binary file: {e}")
 
 
 class App:
-    def main(self):
+    def __init__(self):
+        self.config = Config.from_json(CONFIG_FILE)
+
+    def find_input_files(self) -> set[Path]:
+        if not IN_FOLDER.exists():
+            return set()
+        return set(IN_FOLDER.iterdir())
+
+    def print_file_list(self, files: set[Path]) -> None:
+        console.print("\n[reverse bold]< FILES >[/reverse bold]")
+
+        for file in files:
+            console.print(f"\t[grey27]>[/grey27] {file.name}")
+        console.print()
+
+    def print_config_summary(self) -> None:
+        console.print(f"Width: [yellow]{self.config.width}[/yellow]\n")
+
+    def process_file(self, bin_path: Path) -> bool:
+        console.print(f"[bold]:: File:[/bold] [magenta]{bin_path.name}[/magenta]")
+
+        params = Parameters.from_file(bin_path, self.config.width, RGB_BYTE_SIZE)
+        png_path = OUT_FOLDER / f"{bin_path.name}.png"
+
+        timer = Timer().tic()
+
+        console.print(
+            f"\tSize: [blue]{params.width}[/blue]×[blue]{params.height}[/blue]"
+        )
+        console.print(
+            f"\t[grey27]{params.file_size} Bytes ( +{params.padding} Bytes padded )[/grey27]"
+        )
+        console.print("[grey27]( Processing )[/grey27]")
+
+        try:
+            image = ImageConverter.convert(bin_path, params)
+
+            console.print("[grey27]( Saving )[/grey27]")
+            image.save(png_path)
+
+            elapsed = timer.toc()
+
+            console.print(f"[green italic] ✓ Saved as {png_path.name}[/green italic]")
+            console.print(f"[grey27]In {elapsed:.2f} sec[/grey27]")
+            console.print("")
+
+            return True
+        except RuntimeError as e:
+            console.print(f"[yellow on red bold]:: {e} ::[/yellow on red bold]\n")
+            console.print("[red]>>> SKIP[/red]\n")
+            return False
+        except OSError as e:
+            console.print(f"[yellow on red bold]:: OS error: {e} ::[/yellow on red bold]\n")
+            console.print("[red]>>> SKIP[/red]\n")
+            return False
+
+    def main(self) -> None:
         IN_FOLDER.mkdir(exist_ok=True)
         OUT_FOLDER.mkdir(exist_ok=True)
 
-        config = self.ensure_config()
+        input_files = self.find_input_files()
 
-        if not config:
-            writef(f":: No config ::", F_ERROR)
+        if not input_files:
+            console.print(
+                "[yellow on red bold]:: No input files ::[/yellow on red bold]\n"
+            )
             return
 
-        input_files = set((APP_PATH / "in").iterdir())
-
-        if len(input_files) == 0:
-            writef(":: No input files ::", F_ERROR)
-            write()
-            return
-
-        writef("< FILES >", F_INVERTED)
-        write()
-        [write(f"\t{ffg('>', C_GRAY)} {file.name}\n") for file in input_files]
-
-        write()
-
-        write("Width: ")
-        write(ffg(config.width, FG.YEL))
-        write()
+        self.print_file_list(input_files)
+        self.print_config_summary()
 
         total_timer = Timer().tic()
+        success_count = 0
 
         for bin_path in input_files:
-            params = Parameters.from_file(
-                bin_path, config.width, RGB_BYTE_SIZE
-            )
-            png_path = OUT_FOLDER / f"{bin_path.name}.png"
-            current_timer = Timer().tic()
+            if self.process_file(bin_path):
+                success_count += 1
 
-            image = Image.new("RGB", (params.width, params.height))
+        console.print("[green italic]( Done )[/green italic]")
+        console.print(f"[grey27]Processed: {success_count}/{len(input_files)}[/grey27]")
+        console.print(f"[grey27]Elapsed: {total_timer.toc():.2f} sec[/grey27]")
 
-            write(
-                f"{fstyle(':: File:', STYLE.BOLD)} {ffg(bin_path.name, FG.MAGNT)}\n"
-            )
-            write(
-                f"\tsize: {ffg(params.width, FG.BLUE)}x{ffg(params.height, FG.BLUE)}\n"
-            )
-            write(
-                f"\t{ffg(f'{params.file_size} Bytes ( +{params.padding} Bytes padded)', C_GRAY)}\n"
-            )
-
-            write(ffg("( Processing )\n", C_GRAY))
-
-            try:
-                with open(bin_path, 'rb') as bin_file:
-                    for row in b2image(bin_file, params, BYTE_FILLER):
-                        image.paste(Image.fromarray(
-                            row.image_data, "RGB"), (0, row.idx)
-                        )
-
-            except OSError as e:
-                writef(f":: OS error: {e} ::", F_ERROR)
-                write()
-                write(f"{ffg('>>> SKIP', FG.RED)}\n")
-                continue
-
-            Cur.prev_line()
-            Scr.clear_line()
-
-            write(ffg("( Saving )\n", C_GRAY))
-
-            image.save(png_path)
-
-            Cur.prev_line()
-            Scr.clear_line()
-
-            writef(f"\tSaved as {png_path}\n", F_MISC)
-            writef(f"\tIn {current_timer.toc():.2f} sec\n", F_MISC)
-            write()
-
-        writef("( Done )\n", F_OK)
-        writef(f"Elapsed: {total_timer.toc():.2f} sec\n", F_MISC)
-
-    def ensure_config(self):
-        try:
-            config = JSONConfig.load(CFG_PATH, True)
-
-        except FileNotFoundError:
-            CFG_DEFAULT.save(CFG_PATH)
-            config = JSONConfig(CFG_DEFAULT.as_dict(), True)
-            writef("( Config file created )", F_MISC)
-            write()
-
-        except OSError:
-            writef(":: Unknown OS error ::", F_ERROR)
-            write()
-            return
-
-        write()
-
-        if not CFG_VALIDATOR.validate(config.as_dict()):
-            write("[X] Config validation failed:\n")
-
-            for entry in self.flatten_errors(CFG_VALIDATOR.errors):
-                err_str = f"\t{ffg('>', FG.RED)} {entry[0]:<30} : {ffg((entry[1]), FG.RED)}\n"
-                write(err_str)
-
-            write()
-
-            write(f"Reset {CFG_PATH}?\n")
-            write(f"{ffg('( [y/n] )', C_GRAY)}\n")
-            yn = force_input(
-                ffg(">>> ", FG.GREEN), ffg("( [y/n] )", C_GRAY),
-                func=str.lower,
-                predicates=[lambda x: x in ('y', 'n')]
-            )
-            if yn == 'y':
-                CFG_DEFAULT.save(CFG_PATH)
-
-            return
-
-        return config
-
-    def flatten_errors(self, data, path=None, result=None):
-        if path is None:
-            path = []
-        if result is None:
-            result = []
-
-        if isinstance(data, dict):
-            for key, value in data.items():
-                self.flatten_errors(value, path + [key], result)
-        elif isinstance(data, list):
-            for item in data:
-                self.flatten_errors(item, path, result)
-        else:
-            full_path = ":".join(path)
-            result.append((full_path, data))
-
-        return result
-
-    def run(self):
-        Scr.color_on()
+    def run(self) -> None:
         try:
             self.main()
         except KeyboardInterrupt:
-            input("Press Enter to exit...")
+            pass

@@ -7,8 +7,9 @@ name = "pypi"
 numpy = "*"
 scipy = "*"
 pillow = "*"
-cerberus = "*"
 rich = "*"
+opencv-python-headless = "*"
+pydantic = "*"
 
 [dev-packages]
 pyinstaller = "*"
