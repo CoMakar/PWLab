@@ -457,7 +457,7 @@ class App:
                 console.print("[red]-[/red]")
 
             console.print("\tApply blur: ", end="")
-            if self.config.ISM.noise_strength > 0:
+            if self.config.ISM.blur_radius > 0:
                 console.print(
                     f"[green]+[/green] [dim][{self.config.ISM.blur_radius}px][/dim]"
                 )
