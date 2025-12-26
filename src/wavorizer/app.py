@@ -359,17 +359,18 @@ class SpecWriter:
                 "mode": config.mode,
                 "PBP": (
                     {
+                        "quantization_level": config.PBP.quantization_level,
                         "scan_mode": config.PBP.scan_mode,
                         "post_filter": config.PBP.post_filter,
-                        "quantization_level": config.PBP.quantization_level,
                     }
                     if config.mode == Mode.PBP
                     else None
                 ),
                 "ISM": (
                     {
-                        "noise_strength": config.ISM.noise_strength,
                         "detect_edges": config.ISM.detect_edges,
+                        "noise_strength": config.ISM.noise_strength,
+                        "blur_radius": config.ISM.blur_radius,
                     }
                     if config.mode == Mode.ISM
                     else None
