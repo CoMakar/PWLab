@@ -36,12 +36,12 @@
 
 - Other options:
 
- option           | arg | description                                                                                                                      
-------------------|-----|----------------------------------------------------------------------------------------------------------------------------------
+ option           | arg | description                                                                                                                
+------------------|-----|----------------------------------------------------------------------------------------------------------------------------
  sample_rate_mode | str | if **static**, `sample_rate` value will be used, if **dynamic** sample rate will be computed automatically using remapping 
- sample_rate      | int | target sample rate of the output .wav file                                                                                       
- channels         | int | mono _1_ or stereo _2_                                                                                                           
- image_scale      | int | if this value is other than 1, then image will be prescaled using this scale factor                                              
+ sample_rate      | int | target sample rate of the output .wav file                                                                                 
+ channels         | int | mono _1_ or stereo _2_                                                                                                     
+ image_scale      | int | if this value is other than 1, then image will be prescaled using this scale factor                                        
 
 - Options source: config file
 
@@ -71,6 +71,7 @@
  scan_area_opacity  | float | opacity of the area under the scanning line                                                                         
  scanline_thickness | int   | line thickness                                                                                                      
  blend_mode         | str   | blend mode for the scanner (**NORMAL**, **DODGE**, **DIFF**, **COLOR**, **SATUR**, **OVERLAY**)                     
+ resize_mode        | str   | resize mode for image preprocessor (**NEAREST**, **BOX**, **LANCZOS**)                                              
 
 - Options source: config file
 - Requires: FFmpeg installed and available in PATH
@@ -109,6 +110,7 @@
 ``` JSON
 {
     "resolution": "FULLHD",
+    "resize_mode": "BOX",
     "fps": 2.0,
     "scanner_color": "WHITE",
     "scan_area_opacity": 0.1,

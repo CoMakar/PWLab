@@ -12,6 +12,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from PIL import Image
+from PIL.Image import Resampling
 from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationError
 from rich.console import Console
 from rich.progress import Progress, TextColumn, BarColumn
@@ -110,6 +111,12 @@ class ResolutionPreset(Enum):
     FULLHD = (1920, 1080)
 
 
+class ResizeMode(Enum):
+    NEAREST = "nearest"
+    BOX = "box"
+    LANCZOS = "lanczos"
+
+
 class Colors(Enum):
     RED = (255, 0, 0)
     GREEN = (0, 255, 0)
@@ -132,6 +139,7 @@ class BlendMode(Enum):
 
 class Config(BaseModel):
     resolution: ResolutionPreset = ResolutionPreset.FULLHD
+    resize_mode: ResizeMode = ResizeMode.BOX
     fps: float = Field(default=2, ge=0.1, le=10.0)
     scanner_color: Colors = Colors.WHITE
     scan_area_opacity: float = Field(default=0.1, ge=0.0, le=0.66)
@@ -142,7 +150,8 @@ class Config(BaseModel):
         json_encoders={
             ResolutionPreset: lambda v: v.name,
             Colors: lambda v: v.name,
-            BlendMode: lambda v: v.name
+            BlendMode: lambda v: v.name,
+            ResizeMode: lambda v: v.name
         }
     )
 
@@ -156,8 +165,18 @@ class Config(BaseModel):
                 f"Invalid resolution preset: '{v}'. Valid options: {valid_options}"
             )
 
+    @field_validator("resize_mode", mode="before")
+    def validate_resize_mode(cls, v):
+        try:
+            return ResizeMode[v]
+        except KeyError:
+            valid_options = ", ".join([r.name for r in ResizeMode])
+            raise ValueError(
+                f"Invalid resize mode: '{v}'. Valid options: {valid_options}"
+            )
+
     @field_validator("scanner_color", mode="before")
-    def validate_line_color(cls, v):
+    def validate_scanner_color(cls, v):
         try:
             return Colors[v]
         except KeyError:
@@ -177,7 +196,7 @@ class Config(BaseModel):
             )
 
     @field_validator("scanline_thickness")
-    def validate_line_thickness_odd(cls, v):
+    def validate_scanline_thickness_odd(cls, v):
         if v % 2 == 0:
             raise ValueError(
                 f"line_thickness must be odd, got {v}. Use values like 1, 3, 5, 11..."
@@ -517,9 +536,14 @@ class Renderer:
         image = Image.open(self.image_path)
 
         if image.size != self.spec.processed_size:
-            image = image.resize(self.spec.processed_size, Image.NEAREST)
+            image = image.resize(self.spec.processed_size, Resampling.NEAREST)
         if target_size != image.size:
-            image = image.resize(target_size, Image.LANCZOS)
+            method = {
+                ResizeMode.NEAREST: Resampling.NEAREST,
+                ResizeMode.BOX: Resampling.BOX,
+                ResizeMode.LANCZOS: Resampling.LANCZOS
+            }[self.config.resize_mode]
+            image = image.resize(target_size, method)
         image_rgb = np.array(image)
         image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
@@ -562,7 +586,7 @@ class Renderer:
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "stillimage",
-            "-crf", "23",
+            "-crf", "17",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-b:a", "192k",
@@ -684,11 +708,12 @@ class App:
 
         console.print(f"Resolution: [cyan]{vw}[/cyan]×[cyan]{vh}[/cyan]")
         console.print(f"FPS: [cyan]{self.config.fps}[/cyan]")
-        console.print(f"Scan : line: [{scanner_color['style']}]{scanner_color['name']}[/{scanner_color['style']}] "
+        console.print(f"Scan | line: [{scanner_color['style']}]{scanner_color['name']}[/{scanner_color['style']}] "
                       f"[cyan]{self.config.scanline_thickness}[/cyan]px"
                       )
-        console.print(f"     : area opacity: [cyan]{round(self.config.scan_area_opacity * 100, 2)}[/cyan]%")
+        console.print(f"     | area opacity: [cyan]{round(self.config.scan_area_opacity * 100, 2)}[/cyan]%")
         console.print(f"Blend mode: [yellow]{self.config.blend_mode.value.capitalize()}[/yellow]")
+        console.print(f"Resize mode: [yellow]{self.config.resize_mode.value.capitalize()}[/yellow]")
         console.print()
 
     def process_group(self, group):

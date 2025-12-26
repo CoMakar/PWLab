@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageFilter
+from PIL.Image import Resampling
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from rich.console import Console
 from scipy.io.wavfile import write as wav_write
@@ -510,7 +511,7 @@ class App:
         timer = Timer().tic()
 
         if params.resize:
-            image = image.resize((params.width, params.height), resample=Image.NEAREST)
+            image = image.resize((params.width, params.height), resample=Resampling.NEAREST)
             console.print(f"\t[grey27]Image resized: x{params.scale}[/grey27]")
         console.print(
             f"\tSize: [cyan]{params.width}[/cyan]×[cyan]{params.height}[/cyan]"
