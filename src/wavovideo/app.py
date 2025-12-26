@@ -249,8 +249,8 @@ class Viewport:
             x_offset = (self.video_width - self.img_width) // 2
             y_offset = (self.video_height - self.img_height) // 2
             frame[
-            y_offset: y_offset + self.img_height,
-            x_offset: x_offset + self.img_width,
+                y_offset: y_offset + self.img_height,
+                x_offset: x_offset + self.img_width,
             ] = self.image
             return frame
         offset = int(frame_num * (self.scroll_speed / self.fps))
@@ -366,17 +366,17 @@ class Blender:
         return (np.clip(result, 0, 1) * 255).astype(np.uint8)
 
     @classmethod
-    def apply(cls, stip: np.ndarray, color: tuple, mode: BlendMode) -> np.ndarray:
+    def apply(cls, strip: np.ndarray, color: tuple, mode: BlendMode) -> np.ndarray:
         if mode == BlendMode.DODGE:
-            return cls.dodge(stip, color)
+            return cls.dodge(strip, color)
         elif mode == BlendMode.DIFF:
-            return cls.difference(stip, color)
+            return cls.difference(strip, color)
         elif mode == BlendMode.COLOR:
-            return cls.color(stip, color)
+            return cls.color(strip, color)
         elif mode == BlendMode.SATUR:
-            return cls.saturation(stip, color)
+            return cls.saturation(strip, color)
         elif mode == BlendMode.OVERLAY:
-            return cls.overlay(stip, color)
+            return cls.overlay(strip, color)
         else:
             raise ValueError(f"Unknown blend mode: {mode}")
 

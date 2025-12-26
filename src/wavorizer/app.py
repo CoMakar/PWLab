@@ -34,7 +34,7 @@ ISM_SIZE_THRESHOLD = 64
 ALLOWED_IMG_FORMATS = (".png", ".jpg", ".jpeg")
 MAX_IMAGE_LIN_SIZE = 1e10
 REMAPPER_POWER = 0.5
-REMAPPER_EXP_KOEF = 1
+REMAPPER_EXP_COEF = 1
 
 
 class Mode(StrEnum):
@@ -163,7 +163,7 @@ class Parameters:
                     Resolution.MID,
                     Resolution.HIGH,
                     REMAPPER_POWER,
-                    REMAPPER_EXP_KOEF,
+                    REMAPPER_EXP_COEF,
                 )
             )
         )
