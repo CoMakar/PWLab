@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import colorsys
 import json
 import shutil
 import subprocess as sp
@@ -110,7 +110,7 @@ class ResolutionPreset(Enum):
     FULLHD = (1920, 1080)
 
 
-class LineColor(Enum):
+class Colors(Enum):
     RED = (255, 0, 0)
     GREEN = (0, 255, 0)
     BLUE = (0, 0, 255)
@@ -121,15 +121,29 @@ class LineColor(Enum):
     YELLOW = (255, 255, 0)
 
 
+class BlendMode(Enum):
+    NORMAL = "normal"
+    DODGE = "dodge"
+    DIFF = "difference"
+    COLOR = "color"
+    SATUR = "saturation"
+    OVERLAY = "overlay"
+
+
 class Config(BaseModel):
     resolution: ResolutionPreset = ResolutionPreset.FULLHD
     fps: float = Field(default=2, ge=0.1, le=10.0)
-    line_color: LineColor = LineColor.WHITE
-    area_opacity: float = Field(default=0.1, ge=0.0, le=0.5) 
-    line_thickness: int = Field(default=1, ge=1, le=5)
+    scanner_color: Colors = Colors.WHITE
+    scan_area_opacity: float = Field(default=0.1, ge=0.0, le=0.66)
+    scanline_thickness: int = Field(default=1, ge=1, le=127)
+    blend_mode: BlendMode = BlendMode.NORMAL
 
     model_config = ConfigDict(
-        json_encoders={ResolutionPreset: lambda v: v.name, LineColor: lambda v: v.name}
+        json_encoders={
+            ResolutionPreset: lambda v: v.name,
+            Colors: lambda v: v.name,
+            BlendMode: lambda v: v.name
+        }
     )
 
     @field_validator("resolution", mode="before")
@@ -142,15 +156,33 @@ class Config(BaseModel):
                 f"Invalid resolution preset: '{v}'. Valid options: {valid_options}"
             )
 
-    @field_validator("line_color", mode="before")
+    @field_validator("scanner_color", mode="before")
     def validate_line_color(cls, v):
         try:
-            return LineColor[v]
+            return Colors[v]
         except KeyError:
-            valid_options = ", ".join([c.name for c in LineColor])
+            valid_options = ", ".join([c.name for c in Colors])
             raise ValueError(
-                f"Invalid line color: '{v}'. Valid options: {valid_options}"
+                f"Invalid color: '{v}'. Valid options: {valid_options}"
             )
+
+    @field_validator("blend_mode", mode="before")
+    def validate_blend_mode(cls, v):
+        try:
+            return BlendMode[v]
+        except KeyError:
+            valid_options = ", ".join([m.name for m in BlendMode])
+            raise ValueError(
+                f"Invalid blend mode: '{v}'. Valid options: {valid_options}"
+            )
+
+    @field_validator("scanline_thickness")
+    def validate_line_thickness_odd(cls, v):
+        if v % 2 == 0:
+            raise ValueError(
+                f"line_thickness must be odd, got {v}. Use values like 1, 3, 5, 11..."
+            )
+        return v
 
     @classmethod
     def from_json(cls, path: Path):
@@ -192,7 +224,7 @@ class Viewport:
             axis: Optional[Axis],
             video_size: tuple[int, int],
             duration: float,
-            fps: int,
+            fps: float,
     ):
         self.image = image_np
         self.axis = axis
@@ -245,22 +277,128 @@ class Viewport:
         return frame
 
 
+class Blender:
+    @staticmethod
+    def dodge(strip: np.ndarray, color: tuple) -> np.ndarray:
+        bottom = strip.astype(np.float32) / 255.0
+        top = np.array(color, dtype=np.float32) / 255.0
+        div = (1 - top)[np.newaxis, np.newaxis, :]
+        mask = (top >= 1.0 - 1e-6)[np.newaxis, np.newaxis, :]
+        dodge = np.minimum(1.0, bottom / np.maximum(div, 1e-6))
+        full = np.ones_like(bottom)
+        result = np.where(mask, full, dodge)
+        return (result * 255).astype(np.uint8)
+
+    @staticmethod
+    def difference(strip: np.ndarray, color: tuple) -> np.ndarray:
+        top = np.array(color)[np.newaxis, np.newaxis, :]
+        return np.abs(strip.astype(np.int16) - top.astype(np.int16)).astype(np.uint8)
+
+    @staticmethod
+    def color(strip: np.ndarray, color: tuple) -> np.ndarray:
+        def rgb_to_hls(r, g, b):
+            return colorsys.rgb_to_hls(r, g, b)
+
+        def hls_to_rgb(h, l, s):
+            return colorsys.hls_to_rgb(h, l, s)
+
+        bottom = strip.astype(np.float32) / 255.0
+        top = np.array(color) / 255.0
+
+        top_h, top_l, top_s = colorsys.rgb_to_hls(*top)
+        bottom_r = bottom[..., 0].flatten()
+        bottom_g = bottom[..., 1].flatten()
+        bottom_b = bottom[..., 2].flatten()
+
+        vec_rgb_to_hls = np.vectorize(rgb_to_hls)
+        bottom_h, bottom_l, bottom_s = vec_rgb_to_hls(bottom_r, bottom_g, bottom_b)
+
+        vec_hls_to_rgb = np.vectorize(hls_to_rgb)
+        result_r, result_g, result_b = vec_hls_to_rgb(
+            np.full_like(bottom_l, top_h),
+            bottom_l,
+            np.full_like(bottom_l, top_s)
+        )
+
+        result = np.stack([result_r, result_g, result_b], axis=-1).reshape(strip.shape) * 255
+        return result.astype(np.uint8)
+
+    @staticmethod
+    def saturation(strip: np.ndarray, color: tuple) -> np.ndarray:
+        def rgb_to_hls(r, g, b):
+            return colorsys.rgb_to_hls(r, g, b)
+
+        def hls_to_rgb(h, l, s):
+            return colorsys.hls_to_rgb(h, l, s)
+
+        bottom = strip.astype(np.float32) / 255.0
+        top = np.array(color) / 255.0
+
+        top_h, top_l, top_s = colorsys.rgb_to_hls(*top)
+        bottom_r = bottom[..., 0].flatten()
+        bottom_g = bottom[..., 1].flatten()
+        bottom_b = bottom[..., 2].flatten()
+
+        vec_rgb_to_hls = np.vectorize(rgb_to_hls)
+        bottom_h, bottom_l, bottom_s = vec_rgb_to_hls(bottom_r, bottom_g, bottom_b)
+
+        vec_hls_to_rgb = np.vectorize(hls_to_rgb)
+        result_r, result_g, result_b = vec_hls_to_rgb(
+            bottom_h,
+            bottom_l,
+            np.full_like(bottom_l, top_s)
+        )
+
+        result = np.stack([result_r, result_g, result_b], axis=-1).reshape(strip.shape) * 255
+        return result.astype(np.uint8)
+
+    @staticmethod
+    def overlay(strip: np.ndarray, color: tuple) -> np.ndarray:
+        bottom = strip.astype(np.float32) / 255.0
+        top = np.array(color, dtype=np.float32) / 255.0
+        top = top[np.newaxis, np.newaxis, :]
+
+        mask = bottom < 0.5
+        multiply = 2 * bottom * top
+        screen = 1 - 2 * (1 - bottom) * (1 - top)
+
+        result = np.where(mask, multiply, screen)
+        return (np.clip(result, 0, 1) * 255).astype(np.uint8)
+
+    @classmethod
+    def apply(cls, stip: np.ndarray, color: tuple, mode: BlendMode) -> np.ndarray:
+        if mode == BlendMode.DODGE:
+            return cls.dodge(stip, color)
+        elif mode == BlendMode.DIFF:
+            return cls.difference(stip, color)
+        elif mode == BlendMode.COLOR:
+            return cls.color(stip, color)
+        elif mode == BlendMode.SATUR:
+            return cls.saturation(stip, color)
+        elif mode == BlendMode.OVERLAY:
+            return cls.overlay(stip, color)
+        else:
+            raise ValueError(f"Unknown blend mode: {mode}")
+
+
 class Overlay:
     def __init__(
             self,
-            line_color: tuple[int, int, int],
+            scanner_color: tuple[int, int, int],
             area_opacity: float,
             line_thickness: int,
             axis: Optional[Axis],
             video_size: tuple[int, int],
             scroll_speed: float,
             fps: float,
+            blend_mode: BlendMode
     ):
-        self.line_color = line_color[::-1]
+        self.scanner_color = scanner_color[::-1]
         self.area_opacity = area_opacity
         self.line_thickness = line_thickness
         self.axis = axis
         self.video_width, self.video_height = video_size
+        self.blend_mode = blend_mode
 
         self.scan_step = int(scroll_speed / fps) if scroll_speed > 0 else 0
 
@@ -271,41 +409,71 @@ class Overlay:
         )
 
     def apply(self, frame: np.ndarray) -> np.ndarray:
+        area_start_offset = self.line_thickness // 2 + 1
+        half_thick = self.line_thickness // 2
+
         if self.axis == Axis.VERTICAL and self.line_pos is not None:
             if self.scan_step > 0:
-                y_start = self.line_pos
-                y_end = min(self.video_height, self.line_pos + self.scan_step)
+                y_start_area = self.line_pos + area_start_offset
+                y_end_area = min(self.video_height, self.line_pos + self.scan_step)
+                if y_start_area < y_end_area:
+                    mask = np.zeros((self.video_height, self.video_width, 3), dtype=np.uint8)
+                    cv2.rectangle(
+                        mask, (0, y_start_area), (self.video_width, y_end_area),
+                        self.scanner_color, -1
+                    )
+                    frame[:] = cv2.addWeighted(frame, 1.0, mask, self.area_opacity, 0)
 
-                mask = np.zeros((self.video_height, self.video_width, 3), dtype=np.uint8)
-                cv2.rectangle(mask, (0, y_start), (self.video_width, y_end), self.line_color, -1)
-
-                frame[:] = cv2.addWeighted(frame, 1.0, mask, self.area_opacity, 0)
-
-            cv2.line(
-                frame,
-                (0, self.line_pos),
-                (self.video_width, self.line_pos),
-                self.line_color,
-                self.line_thickness,
-            )
+            if self.blend_mode == BlendMode.NORMAL:
+                cv2.line(
+                    frame,
+                    (0, self.line_pos),
+                    (self.video_width, self.line_pos),
+                    self.scanner_color,
+                    self.line_thickness,
+                )
+            else:
+                y_start_line = max(0, self.line_pos - half_thick)
+                y_end_line = min(
+                    self.video_height,
+                    self.line_pos + half_thick + (self.line_thickness % 2)
+                )
+                if y_start_line < y_end_line:
+                    strip = frame[y_start_line:y_end_line, :]
+                    blended = Blender.apply(strip, self.scanner_color, self.blend_mode)
+                    frame[y_start_line:y_end_line, :] = blended
 
         elif self.axis == Axis.HORIZONTAL and self.line_pos is not None:
             if self.scan_step > 0:
-                x_start = self.line_pos
-                x_end = min(self.video_width, self.line_pos + self.scan_step)
+                x_start_area = self.line_pos + area_start_offset
+                x_end_area = min(self.video_width, self.line_pos + self.scan_step)
+                if x_start_area < x_end_area:
+                    mask = np.zeros((self.video_height, self.video_width, 3), dtype=np.uint8)
+                    cv2.rectangle(
+                        mask, (x_start_area, 0), (x_end_area, self.video_height),
+                        self.scanner_color, -1
+                    )
+                    frame[:] = cv2.addWeighted(frame, 1.0, mask, self.area_opacity, 0)
 
-                mask = np.zeros((self.video_height, self.video_width, 3), dtype=np.uint8)
-                cv2.rectangle(mask, (x_start, 0), (x_end, self.video_height), self.line_color, -1)
-
-                frame[:] = cv2.addWeighted(frame, 1.0, mask, self.area_opacity, 0)
-
-            cv2.line(
-                frame,
-                (self.line_pos, 0),
-                (self.line_pos, self.video_height),
-                self.line_color,
-                self.line_thickness,
-            )
+            if self.blend_mode == BlendMode.NORMAL:
+                cv2.line(
+                    frame,
+                    (self.line_pos, 0),
+                    (self.line_pos, self.video_height),
+                    self.scanner_color,
+                    self.line_thickness,
+                )
+            else:
+                half_thick = self.line_thickness // 2
+                x_start_line = max(0, self.line_pos - half_thick)
+                x_end_line = min(
+                    self.video_width,
+                    self.line_pos + half_thick + (self.line_thickness % 2)
+                )
+                if x_start_line < x_end_line:
+                    strip = frame[:, x_start_line:x_end_line]
+                    blended = Blender.apply(strip, self.scanner_color, self.blend_mode)
+                    frame[:, x_start_line:x_end_line] = blended
 
         return frame
 
@@ -367,13 +535,14 @@ class Renderer:
 
         viewport = Viewport(image_bgr, axis, (vw, vh), self.duration, fps)
         overlay = Overlay(
-            self.config.line_color.value,
-            self.config.area_opacity,
-            self.config.line_thickness,
+            self.config.scanner_color.value,
+            self.config.scan_area_opacity,
+            self.config.scanline_thickness,
             axis,
             (vw, vh),
             viewport.scroll_speed,
-            fps
+            fps,
+            self.config.blend_mode
         )
 
         cmd = [
@@ -502,9 +671,25 @@ class App:
 
     def print_config(self):
         vw, vh = self.config.resolution.value
+        scanner_color = {
+            Colors.WHITE: {"name": "White", "style": "white"},
+            Colors.BLACK: {"name": "Black", "style": "black on white"},
+            Colors.RED: {"name": "Red", "style": "red"},
+            Colors.GREEN: {"name": "Green", "style": "green"},
+            Colors.BLUE: {"name": "Blue", "style": "blue"},
+            Colors.CYAN: {"name": "Cyan", "style": "cyan"},
+            Colors.MAGENTA: {"name": "Magenta", "style": "magenta"},
+            Colors.YELLOW: {"name": "Yellow", "style": "yellow"}
+        }[self.config.scanner_color]
+
         console.print(f"Resolution: [cyan]{vw}[/cyan]×[cyan]{vh}[/cyan]")
         console.print(f"FPS: [cyan]{self.config.fps}[/cyan]")
-        console.print("")
+        console.print(f"Scan : line: [{scanner_color['style']}]{scanner_color['name']}[/{scanner_color['style']}] "
+                      f"[cyan]{self.config.scanline_thickness}[/cyan]px"
+                      )
+        console.print(f"     : area opacity: [cyan]{round(self.config.scan_area_opacity * 100, 2)}[/cyan]%")
+        console.print(f"Blend mode: [yellow]{self.config.blend_mode.value.capitalize()}[/yellow]")
+        console.print()
 
     def process_group(self, group):
         group_name = group["spec"].stem.replace(".spec", "")
@@ -556,9 +741,8 @@ class App:
             success = renderer.render(output_path)
             elapsed = timer.toc()
 
-            console.print("[grey27]( Saving )[/grey27]")
-
             if success:
+                console.print("[grey27]( Saving )[/grey27]")
                 console.print(f"[green italic] ✓ Saved as {output_path.name}[/green italic]")
                 console.print(f"[grey27]In {elapsed:.2f} sec[/grey27]")
             else:

@@ -62,13 +62,15 @@ image_scale        | int | if this value is other than 1, then image will be pre
   - **ISM**: horizontal scroll
 - Options:
 
-option         | arg   | description
----------------|-------|------------
-resolution     | str   | output video resolution (**TINY**, **SMALL**, **MEDIUM**, **LARGE**, **FULLHD**)
-fps            | int   | frames per second (2-8)
-line_color     | int   | scanning line color (**RED**, **GREEN**, **BLUE**, **WHITE**, **BLACK**, **CYAN**, **MAGENTA**, **YELLOW**)
-area_opacity   | float | opacity of the area under the scanning line
-line_thickness | int   | scanning line thickness (1-5)
+option              | arg   | description
+--------------------|-------|------------
+resolution          | str   | output video resolution (**TINY**, **SMALL**, **MEDIUM**, **LARGE**, **FULLHD**)
+fps                 | int   | frames per second
+scanner_color       | int   | scanner line and area color (**RED**, **GREEN**, **BLUE**, **WHITE**, **BLACK**, **CYAN**, **MAGENTA**, **YELLOW**)
+scan_area_opacity   | float | opacity of the area under the scanning line
+scanline_thickness  | int   | line thickness
+blend_mode          | str   | blend mode for the scanner (**NORMAL**, **DODGE**, **DIFF**, **COLOR**, **SATUR**, **OVERLAY**)
+
 
 - Options source: config file
 - Requires: FFmpeg installed and available in PATH
