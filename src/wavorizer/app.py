@@ -17,6 +17,7 @@ from PIL import Image, ImageFilter
 from PIL.Image import Resampling
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from rich.console import Console
+from rich.live import Live
 from scipy.io.wavfile import write as wav_write
 from scipy.ndimage import sobel
 from scipy.signal import ShortTimeFFT
@@ -488,7 +489,7 @@ class App:
         for file in img_files:
             console.print(f"\t[green]✓[/green] {file.name}")
         for file in other_files:
-            console.print(f"\t[red]x[/red] [grey27]{file.name}[/grey27]")
+            console.print(f"\t[red]✗[/red] [grey27]{file.name}[/grey27]")
         console.print()
 
     def process_image(self, img_path: Path) -> bool:
@@ -532,18 +533,17 @@ class App:
             return False
         console.print(f"\tSample rate: [cyan]{params.sample_rate}[/cyan]")
 
-        console.print("[grey27]( Processing )[/grey27]")
+        with Live("[grey27]( Processing )[/grey27]", transient=True):
+            if self.config.mode == Mode.PBP:
+                audio_data = PBPProcessor.process(image, self.config)
+            else:
+                audio_data = ISMProcessor.process(image, self.config)
 
-        if self.config.mode == Mode.PBP:
-            audio_data = PBPProcessor.process(image, self.config)
-        else:
-            audio_data = ISMProcessor.process(image, self.config)
-        console.print("[grey27]( Saving )[/grey27]")
-
-        AudioWriter.write(
-            audio_data, params.sample_rate, self.config.channels, wav_path
-        )
-        SpecWriter.write(spec_path, img_path, wav_path, self.config, params)
+        with Live("[grey27]( Saving )[/grey27]", transient=True):
+            AudioWriter.write(
+                audio_data, params.sample_rate, self.config.channels, wav_path
+            )
+            SpecWriter.write(spec_path, img_path, wav_path, self.config, params)
 
         elapsed = timer.toc()
 

@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 from rich.console import Console
+from rich.live import Live
 
 from src.common.timer import Timer
 
@@ -289,7 +290,7 @@ class App:
         console.print("\n[reverse bold]< FILES >[/reverse bold]")
 
         for file in files:
-            console.print(f"\t[grey27]>[/grey27] {file.name}")
+            console.print(f"\t[green]>[/green] {file.name}")
         console.print()
 
     def print_config_summary(self) -> None:
@@ -309,15 +310,16 @@ class App:
         console.print(
             f"\t[grey27]{params.file_size} Bytes ( +{params.padding} Bytes padded )[/grey27]"
         )
-        console.print("[grey27]( Processing )[/grey27]")
 
         try:
-            converter = ImageConverter(bin_path, params)
-            image = converter.convert()
+            with Live("[grey27]( Processing )[/grey27]", transient=True):
+                converter = ImageConverter(bin_path, params)
+                image = converter.convert()
 
             console.print(f"[grey54]- Header: {converter.get_row_offset()} rows -[/grey54]")
-            console.print("[grey27]( Saving )[/grey27]")
-            image.save(png_path)
+
+            with Live("[grey27]( Saving )[/grey27]", transient=True):
+                image.save(png_path)
 
             elapsed = timer.toc()
 

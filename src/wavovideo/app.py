@@ -268,8 +268,8 @@ class Viewport:
             x_offset = (self.video_width - self.img_width) // 2
             y_offset = (self.video_height - self.img_height) // 2
             frame[
-                y_offset: y_offset + self.img_height,
-                x_offset: x_offset + self.img_width,
+            y_offset: y_offset + self.img_height,
+            x_offset: x_offset + self.img_width,
             ] = self.image
             return frame
         offset = int(frame_num * (self.scroll_speed / self.fps))
@@ -687,7 +687,7 @@ class App:
                 status = f"[green]✓ {present}/{total}[/green]"
                 name_style = "white"
             else:
-                status = f"[yellow]x {present}/{total}[/yellow]"
+                status = f"[yellow]✗ {present}/{total}[/yellow]"
 
                 name_style = "dim"
             console.print(f"\t{status} [{name_style}]{group_name}[/{name_style}]")
@@ -760,14 +760,12 @@ class App:
             output_path = OUT_FOLDER / (group_name + ".mp4")
 
             console.print("")
-            console.print("[grey27]( Rendering )[/grey27]")
 
             timer = Timer().tic()
             success = renderer.render(output_path)
             elapsed = timer.toc()
 
             if success:
-                console.print("[grey27]( Saving )[/grey27]")
                 console.print(f"[green italic] ✓ Saved as {output_path.name}[/green italic]")
                 console.print(f"[grey27]In {elapsed:.2f} sec[/grey27]")
             else:
@@ -790,7 +788,11 @@ class App:
             console.print(
                 "[yellow on red bold]:: FFmpeg not found ::[/yellow on red bold]"
             )
+            console.print(
+                "[yellow on red bold]:: Please install it and add it to `PATH` ::[/yellow on red bold]"
+            )
             return
+
         IN_FOLDER.mkdir(exist_ok=True)
         OUT_FOLDER.mkdir(exist_ok=True)
 
@@ -801,8 +803,8 @@ class App:
                 "[yellow on red bold]:: No spec files found ::[/yellow on red bold]"
             )
             return
-        self.print_file_groups(groups)
 
+        self.print_file_groups(groups)
         self.print_config()
 
         valid_groups = [
